@@ -150,7 +150,7 @@ cp terraform.tfvars.example terraform.tfvars
 terraform init
 terraform apply
 aws eks update-kubeconfig --name llm-k8sv4 --region ap-northeast-1 2>&1
-cd .. & bash scripts/fix-hybrid-node.sh
+cd .. && bash scripts/fix-hybrid-node.sh
 ```
 
 **Time:** ~35-40 minutes. Creates: Amazon EKS cluster, VPCs, Transit Gateway, hybrid node, Karpenter, KEDA, GPU Operator, Cilium, Prometheus, model download Jobs.
