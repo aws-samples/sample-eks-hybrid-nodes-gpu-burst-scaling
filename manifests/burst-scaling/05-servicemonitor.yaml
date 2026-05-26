@@ -1,0 +1,17 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: vllm-burst-scaling
+  labels:
+    app: vllm-burst-scaling
+spec:
+  selector:
+    matchLabels:
+      model: qwen36-35b-a3b
+  namespaceSelector:
+    matchNames:
+      - default
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s

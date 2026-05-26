@@ -1,0 +1,41 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: qwen36-burst-scaler
+  labels:
+    app: vllm-burst-scaling
+spec:
+  scaleTargetRef:
+    name: qwen36-burst
+  minReplicaCount: 0
+  maxReplicaCount: 4
+  pollingInterval: 15
+  cooldownPeriod: 300
+  triggers:
+    # Trigger 1: Queue depth ratio (waiting/running > 2)
+    # Most robust at low load — detects scheduler queueing once batch is saturated
+    - type: prometheus
+      metadata:
+        serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+        query: |
+          sum(vllm:num_requests_waiting{pod=~"qwen36-hybrid.*"}) / clamp_min(sum(vllm:num_requests_running{pod=~"qwen36-hybrid.*"}), 1)
+        threshold: "2"
+        activationThreshold: "1.5"
+    # Trigger 2: TTFT P95 > 0.5s (activation at 0.3s)
+    # Best leading indicator of overload — KV-cache pressure shows up here first
+    - type: prometheus
+      metadata:
+        serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+        query: |
+          histogram_quantile(0.95, sum(rate(vllm:time_to_first_token_seconds_bucket{pod=~"qwen36-hybrid.*"}[2m])) by (le))
+        threshold: "0.5"
+        activationThreshold: "0.3"
+    # Trigger 3: E2E latency P95 > 10s (activation at 7s)
+    # Backstop for long generations not captured by TTFT
+    - type: prometheus
+      metadata:
+        serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+        query: |
+          histogram_quantile(0.95, sum(rate(vllm:e2e_request_latency_seconds_bucket{pod=~"qwen36-hybrid.*"}[2m])) by (le))
+        threshold: "10"
+        activationThreshold: "7"

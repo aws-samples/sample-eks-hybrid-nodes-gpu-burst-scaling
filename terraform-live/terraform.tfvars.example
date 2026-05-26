@@ -1,0 +1,14 @@
+# Required — copy to terraform.tfvars and fill in values
+cluster_name       = "my-eks-cluster"
+region             = "us-east-1"
+hybrid_vpc_cidr    = "10.100.0.0/16"
+hybrid_subnet_cidr = "10.100.0.0/24"
+remote_pod_cidr    = "10.200.0.0/16"
+instance_type      = "g6.12xlarge"
+
+# REQUIRED — set via TF_VAR_grafana_admin_password or uncomment below
+# grafana_admin_password = "<YOUR_GRAFANA_PASSWORD>"
+
+# AWS Deep Learning Container ECR account ID (default works for most commercial regions)
+# See: https://github.com/aws/deep-learning-containers/blob/master/available_images.md
+# dlc_account_id = "763104351884"

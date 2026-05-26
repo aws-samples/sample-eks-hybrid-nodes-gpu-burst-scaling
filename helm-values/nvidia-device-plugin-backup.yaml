@@ -1,0 +1,53 @@
+---
+# Release: nvdp (active device plugin)
+release: nvdp
+chart: nvidia-device-plugin-0.17.1
+namespace: nvidia-device-plugin
+values:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: eks.amazonaws.com/compute-type
+                operator: In
+                values:
+                  - hybrid
+  gfd:
+    enabled: false
+  tolerations:
+    - effect: NoSchedule
+      key: nvidia.com/gpu
+      operator: Exists
+
+---
+# Release: nvidia-device-plugin (legacy, no user-supplied values)
+release: nvidia-device-plugin
+chart: nvidia-device-plugin-0.17.1
+namespace: nvidia-device-plugin
+values: null
+
+---
+# Release: dcgm-exporter
+release: dcgm-exporter
+chart: dcgm-exporter-4.8.2
+namespace: nvidia-device-plugin
+values:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: eks.amazonaws.com/compute-type
+                operator: In
+                values:
+                  - hybrid
+  service:
+    port: 9400
+    type: ClusterIP
+  serviceMonitor:
+    enabled: false
+  tolerations:
+    - effect: NoSchedule
+      key: nvidia.com/gpu
+      operator: Exists
