@@ -25,7 +25,7 @@ spec:
         model: qwen25-1-5b
         tier: burst
     spec:
-      serviceAccountName: model-storage-sa
+      # Model is pulled from Hugging Face (public) at pod start - no S3/IRSA needed.
       terminationGracePeriodSeconds: 90
       tolerations:
         - key: nvidia.com/gpu
@@ -39,12 +39,12 @@ spec:
           image: ${dlc_account_id}.dkr.ecr.${region}.amazonaws.com/vllm:0.19.1-gpu-py312-cu129-ubuntu22.04-ec2-v1.1-soci
           args:
             - '--port=8000'
-            # TODO(fernasch-decision): model for the burst tier.
-            # Pending Fernando's input (Slack 2026-06-06): same model as the
-            # CPU baseline (Qwen2.5-1.5B) to keep the Service round-robin
-            # coherent, OR a larger model for asymmetric burst. Default below
-            # assumes SAME model as baseline. The served-model-name MUST match
-            # the baseline (02-hybrid-deployment) regardless of the choice.
+            # Same model as the CPU baseline (Qwen2.5-1.5B), here on GPU.
+            # Decision confirmed by the upstream author (Fernando, 2026-06-07):
+            # keep the SAME model on both tiers so the Service round-robins
+            # coherently across baseline (CPU on-prem) and burst (GPU cloud) -
+            # the burst is extra capacity for the same model, not a different
+            # service. served-model-name MUST match 02-hybrid-deployment.
             - '--model=Qwen/Qwen2.5-1.5B-Instruct'
             - '--served-model-name=Qwen2.5-1.5B-Instruct'
             - '--tensor-parallel-size=1'

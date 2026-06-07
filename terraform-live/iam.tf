@@ -50,17 +50,6 @@ resource "aws_iam_policy" "hybrid_node_eks" {
           "ecr:BatchGetImage"
         ]
         Resource = "*"
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "s3:GetObject",
-          "s3:ListBucket"
-        ]
-        Resource = [
-          "arn:aws:s3:::vllm-qwen35b-models-${data.aws_caller_identity.current.account_id}",
-          "arn:aws:s3:::vllm-qwen35b-models-${data.aws_caller_identity.current.account_id}/*"
-        ]
       }
     ]
   })
