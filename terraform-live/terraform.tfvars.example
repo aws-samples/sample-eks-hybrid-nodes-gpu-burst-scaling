@@ -1,10 +1,15 @@
-# Required — copy to terraform.tfvars and fill in values
-cluster_name       = "my-eks-cluster"
-region             = "us-east-1"
-hybrid_vpc_cidr    = "10.100.0.0/16"
-hybrid_subnet_cidr = "10.100.0.0/24"
-remote_pod_cidr    = "10.200.0.0/16"
-instance_type      = "g6.12xlarge"
+# Required — copy to terraform.tfvars and fill in values (VMware on-premises flavor)
+cluster_name = "my-eks-vmware-hybrid"
+region       = "us-east-1"
+
+# On-premises (vSphere) networking
+onprem_node_cidr = "192.168.3.0/24" # LAN where your vSphere hybrid node VM lives (RemoteNodeNetwork)
+remote_pod_cidr  = "10.201.0.0/16"  # Pod CIDR on the hybrid node (RemotePodNetwork, via Gateway VXLAN)
+
+# Site-to-Site VPN to your on-premises edge router (e.g. pfSense / vCenter network edge)
+customer_gateway_ip      = "<YOUR_ONPREM_PUBLIC_IP>" # Public IP of your VPN endpoint. Use DDNS for dynamic IPs.
+customer_gateway_bgp_asn = 65000                     # BGP ASN of your on-premises router (underlay routing is BGP)
+# tgw_amazon_side_asn    = 64512                      # Amazon-side TGW ASN (default)
 
 # REQUIRED — set via TF_VAR_grafana_admin_password or uncomment below
 # grafana_admin_password = "<YOUR_GRAFANA_PASSWORD>"

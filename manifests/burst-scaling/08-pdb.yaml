@@ -1,7 +1,7 @@
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: qwen36-hybrid-pdb
+  name: qwen-hybrid-pdb
   labels:
     app: vllm-burst-scaling
 spec:
@@ -9,4 +9,4 @@ spec:
   selector:
     matchLabels:
       tier: hybrid
-      model: qwen36-35b-a3b
+      model: qwen25-1-5b

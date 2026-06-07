@@ -76,7 +76,7 @@ detect_vllm_host() {
 
   # Fallback: ClusterIP of the service
   local svc_ip
-  svc_ip=$(kubectl get svc "qwen36-burst-svc" \
+  svc_ip=$(kubectl get svc "qwen-burst-svc" \
     -o jsonpath='{.spec.clusterIP}' 2>/dev/null || echo "")
 
   echo "${svc_ip:-}"
@@ -489,7 +489,7 @@ except:
     local prom_tps
     prom_tps=$(kubectl exec -n monitoring "$prom_pod" \
       -c prometheus \
-      -- wget -qO- "http://localhost:9090/api/v1/query?query=rate(vllm:generation_tokens_total%7Bpod%3D~%22qwen36-hybrid.*%22%7D%5B5m%5D)" \
+      -- wget -qO- "http://localhost:9090/api/v1/query?query=rate(vllm:generation_tokens_total%7Bpod%3D~%22qwen-hybrid.*%22%7D%5B5m%5D)" \
       2>/dev/null | python3 -c "
 import sys, json
 try:

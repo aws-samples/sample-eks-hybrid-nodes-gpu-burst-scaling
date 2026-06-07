@@ -284,7 +284,7 @@ resource "kubectl_manifest" "download_model_to_hostpath" {
           volumes:
             - name: model-host
               hostPath:
-                path: /opt/models/qwen36-awq
+                path: /opt/models/qwen-model
                 type: DirectoryOrCreate
   YAML
 
@@ -292,7 +292,6 @@ resource "kubectl_manifest" "download_model_to_hostpath" {
     kubectl_manifest.download_model_to_s3,
     kubectl_manifest.model_storage_sa,
     helm_release.cilium,
-    helm_release.gpu_operator,
-    aws_instance.hybrid_gpu_node
+    helm_release.gpu_operator
   ]
 }

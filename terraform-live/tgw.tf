@@ -2,11 +2,20 @@
 # SPDX-License-Identifier: MIT-0
 
 ################################################################################
-# Transit Gateway
+# Transit Gateway + Site-to-Site VPN to on-premises vSphere
+#
+# Unlike the upstream sample (TGW attachment to a simulated hybrid VPC), this
+# VMware flavor connects the EKS VPC to a REAL on-premises environment over a
+# Site-to-Site VPN. The customer edge (e.g. pfSense) terminates the VPN and
+# routes to the vSphere hybrid node LAN and the remote pod CIDR.
+#
+# Underlay routing is BGP (dynamic). The Hybrid Nodes Gateway VXLAN overlay
+# runs on top of this transport, transparent to the underlay routing choice.
 ################################################################################
 
 resource "aws_ec2_transit_gateway" "main" {
-  description                     = "TGW connecting EKS VPC and Hybrid VPC"
+  description                     = "TGW connecting EKS VPC and on-premises vSphere via VPN"
+  amazon_side_asn                 = var.tgw_amazon_side_asn
   default_route_table_association = "enable"
   default_route_table_propagation = "enable"
 
@@ -15,7 +24,7 @@ resource "aws_ec2_transit_gateway" "main" {
   })
 }
 
-# TGW Attachment - EKS VPC (uses module output, NO hardcoded IDs)
+# TGW Attachment - EKS VPC
 resource "aws_ec2_transit_gateway_vpc_attachment" "cluster" {
   subnet_ids         = module.vpc.private_subnets
   transit_gateway_id = aws_ec2_transit_gateway.main.id
@@ -26,36 +35,51 @@ resource "aws_ec2_transit_gateway_vpc_attachment" "cluster" {
   })
 }
 
-# TGW Attachment - Hybrid VPC
-resource "aws_ec2_transit_gateway_vpc_attachment" "hybrid" {
-  subnet_ids         = [aws_subnet.hybrid_private.id]
-  transit_gateway_id = aws_ec2_transit_gateway.main.id
-  vpc_id             = aws_vpc.hybrid.id
+################################################################################
+# Customer Gateway + VPN Connection (to on-premises edge router)
+################################################################################
+
+resource "aws_customer_gateway" "onprem" {
+  bgp_asn    = var.customer_gateway_bgp_asn
+  ip_address = var.customer_gateway_ip
+  type       = "ipsec.1"
 
   tags = merge(local.tags, {
-    Name = "${local.name}-tgw-hybrid"
+    Name = "${local.name}-onprem-cgw"
+  })
+}
+
+resource "aws_vpn_connection" "onprem" {
+  customer_gateway_id = aws_customer_gateway.onprem.id
+  transit_gateway_id  = aws_ec2_transit_gateway.main.id
+  type                = "ipsec.1"
+  static_routes_only  = false # BGP (dynamic)
+
+  tags = merge(local.tags, {
+    Name = "${local.name}-onprem-vpn"
   })
 }
 
 ################################################################################
-# Routes in EKS VPC private route tables (for_each over module output)
+# Routes in EKS VPC private route tables toward on-premises (via TGW)
 ################################################################################
 
-# Route to hybrid nodes CIDR
-# With single_nat_gateway=true, there's only 1 private route table
-# Using count with distinct to handle both single and multi-NAT scenarios
-resource "aws_route" "eks_to_hybrid_nodes" {
-  count                  = 1
+# Route to on-premises hybrid node LAN
+resource "aws_route" "eks_to_onprem_nodes" {
   route_table_id         = module.vpc.private_route_table_ids[0]
-  destination_cidr_block = var.hybrid_vpc_cidr
+  destination_cidr_block = var.onprem_node_cidr
   transit_gateway_id     = aws_ec2_transit_gateway.main.id
 
   depends_on = [aws_ec2_transit_gateway_vpc_attachment.cluster]
 }
 
-# Route to remote pods CIDR
+# Route to remote pods CIDR.
+# NOTE: with the Hybrid Nodes Gateway, pod traffic is VXLAN-encapsulated and
+# the VPC route table entry for the pod CIDR points to the Gateway leader ENI
+# (managed by the gateway controller), NOT to the TGW. This baseline route via
+# TGW is created for initial reachability; the gateway controller updates the
+# pod CIDR route to its leader ENI at runtime.
 resource "aws_route" "eks_to_remote_pods" {
-  count                  = 1
   route_table_id         = module.vpc.private_route_table_ids[0]
   destination_cidr_block = var.remote_pod_cidr
   transit_gateway_id     = aws_ec2_transit_gateway.main.id
@@ -65,16 +89,4 @@ resource "aws_route" "eks_to_remote_pods" {
   lifecycle {
     ignore_changes = [network_interface_id, transit_gateway_id]
   }
-}
-
-################################################################################
-# Route in Hybrid VPC private route table to EKS VPC
-################################################################################
-
-resource "aws_route" "hybrid_to_eks" {
-  route_table_id         = aws_route_table.hybrid_private.id
-  destination_cidr_block = local.vpc_cidr
-  transit_gateway_id     = aws_ec2_transit_gateway.main.id
-
-  depends_on = [aws_ec2_transit_gateway_vpc_attachment.hybrid]
 }

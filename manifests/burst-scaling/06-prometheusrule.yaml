@@ -9,21 +9,21 @@ spec:
     - name: vllm-burst-scaling
       rules:
         - alert: BurstPodStuckPending
-          expr: kube_pod_status_phase{pod=~"qwen36-burst.*", phase="Pending"} == 1
+          expr: kube_pod_status_phase{pod=~"qwen-burst.*", phase="Pending"} == 1
           for: 10m
           labels:
             severity: warning
           annotations:
             summary: "Burst pod stuck in Pending for >10m"
         - alert: HybridPodNotReady
-          expr: kube_pod_status_ready{pod=~"qwen36-hybrid.*", condition="true"} == 0
+          expr: kube_pod_status_ready{pod=~"qwen-hybrid.*", condition="true"} == 0
           for: 5m
           labels:
             severity: critical
           annotations:
             summary: "Hybrid pod not ready for >5m"
         - alert: BurstScalingNotTriggering
-          expr: histogram_quantile(0.95, sum(rate(vllm:time_to_first_token_seconds_bucket{pod=~"qwen36-hybrid.*"}[5m])) by (le)) > 0.5 and keda_scaler_active{scaledObject="qwen36-burst-scaler"} == 0
+          expr: histogram_quantile(0.95, sum(rate(vllm:time_to_first_token_seconds_bucket{pod=~"qwen-hybrid.*"}[5m])) by (le)) > 0.5 and keda_scaler_active{scaledObject="qwen-burst-scaler"} == 0
           for: 5m
           labels:
             severity: warning

@@ -7,7 +7,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      model: qwen36-35b-a3b
+      model: qwen25-1-5b
   namespaceSelector:
     matchNames:
       - default

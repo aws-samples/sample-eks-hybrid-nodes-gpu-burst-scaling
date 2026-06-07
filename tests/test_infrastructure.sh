@@ -501,15 +501,15 @@ test_dns_cross_vpc() {
     --image=busybox:1.36 \
     --restart=Never \
     --rm \
-    --command -- sh -c "nslookup qwen36-burst-svc.default.svc.cluster.local && echo DNS_OK || echo DNS_FAIL" \
+    --command -- sh -c "nslookup qwen-burst-svc.default.svc.cluster.local && echo DNS_OK || echo DNS_FAIL" \
     2>/dev/null || echo "TIMEOUT")
 
   if echo "$svc_dns" | grep -q "DNS_OK"; then
-    pass "DNS resolves qwen36-burst-svc.default.svc.cluster.local"
+    pass "DNS resolves qwen-burst-svc.default.svc.cluster.local"
   elif echo "$svc_dns" | grep -q "TIMEOUT"; then
     skip "DNS test timed out"
   else
-    fail "DNS failed for qwen36-burst-svc: ${svc_dns}"
+    fail "DNS failed for qwen-burst-svc: ${svc_dns}"
   fi
 }
 

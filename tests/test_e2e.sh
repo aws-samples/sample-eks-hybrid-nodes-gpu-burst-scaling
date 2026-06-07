@@ -23,9 +23,9 @@ set -uo pipefail
 # Configuration
 # ---------------------------------------------------------------------------
 MODEL_NAME="${MODEL_NAME:-Qwen3.6-35B-A3B-AWQ}"
-BURST_DEPLOY="${BURST_DEPLOY:-qwen36-burst}"
-HYBRID_DEPLOY="${HYBRID_DEPLOY:-qwen36-hybrid}"
-SCALEDOBJECT_NAME="${SCALEDOBJECT_NAME:-qwen36-burst-scaler}"
+BURST_DEPLOY="${BURST_DEPLOY:-qwen-burst}"
+HYBRID_DEPLOY="${HYBRID_DEPLOY:-qwen-hybrid}"
+SCALEDOBJECT_NAME="${SCALEDOBJECT_NAME:-qwen-burst-scaler}"
 KARPENTER_NODEPOOL="${KARPENTER_NODEPOOL:-gpu}"
 MONITORING_NS="${MONITORING_NS:-monitoring}"
 DEFAULT_NS="${DEFAULT_NS:-default}"
@@ -180,18 +180,18 @@ e2e_phase1_deploy_verification() {
     fail "Karpenter NodePool '${KARPENTER_NODEPOOL}' not found"
   fi
 
-  step "1.6 Service qwen36-burst-svc exists and has endpoints"
+  step "1.6 Service qwen-burst-svc exists and has endpoints"
   local svc_exists
   svc_exists=$(kubectl get svc \
-    "qwen36-burst-svc" -n "$DEFAULT_NS" \
+    "qwen-burst-svc" -n "$DEFAULT_NS" \
     -o jsonpath='{.metadata.name}' 2>/dev/null || echo "")
 
   if [[ -n "$svc_exists" ]]; then
-    pass "Service qwen36-burst-svc exists"
+    pass "Service qwen-burst-svc exists"
 
     local endpoints
     endpoints=$(kubectl get endpoints \
-      "qwen36-burst-svc" -n "$DEFAULT_NS" \
+      "qwen-burst-svc" -n "$DEFAULT_NS" \
       -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || echo "")
 
     if [[ -n "$endpoints" ]]; then
@@ -201,7 +201,7 @@ e2e_phase1_deploy_verification() {
       pass "Service has no endpoints (scale-to-zero active)"
     fi
   else
-    fail "Service qwen36-burst-svc not found"
+    fail "Service qwen-burst-svc not found"
   fi
 
   step "1.7 vLLM health check on hybrid pod"
@@ -299,7 +299,7 @@ e2e_phase2_baseline_inference() {
 
   step "2.4 vLLM metrics appear in Prometheus"
   local waiting_metric
-  waiting_metric=$(prometheus_query 'vllm:num_requests_waiting{pod=~"qwen36-hybrid.*"}')
+  waiting_metric=$(prometheus_query 'vllm:num_requests_waiting{pod=~"qwen-hybrid.*"}')
 
   if [[ "$waiting_metric" =~ ^[0-9] ]]; then
     pass "Metric vllm:num_requests_waiting available in Prometheus (value=${waiting_metric})"
@@ -393,7 +393,7 @@ EOF
 
     # Collect metrics for evidence
     local waiting_val
-    waiting_val=$(prometheus_query 'sum(vllm:num_requests_waiting{pod=~"qwen36-hybrid.*"})' 2>/dev/null || echo "?")
+    waiting_val=$(prometheus_query 'sum(vllm:num_requests_waiting{pod=~"qwen-hybrid.*"})' 2>/dev/null || echo "?")
 
     info "  [${elapsed}s] KEDA Active=${keda_active} | burst replicas=${burst_replicas} | waiting=${waiting_val}"
 
@@ -515,7 +515,7 @@ e2e_phase4_metrics_under_load() {
 
   step "4.1 vllm:num_requests_waiting > 0 during load"
   local waiting_val
-  waiting_val=$(prometheus_query 'sum(vllm:num_requests_waiting{pod=~"qwen36-hybrid.*"})')
+  waiting_val=$(prometheus_query 'sum(vllm:num_requests_waiting{pod=~"qwen-hybrid.*"})')
 
   if [[ "$waiting_val" =~ ^[0-9] ]]; then
     pass "vllm:num_requests_waiting=${waiting_val} (load visible in Prometheus)"
@@ -525,7 +525,7 @@ e2e_phase4_metrics_under_load() {
 
   step "4.2 vllm:num_requests_running > 0 during load"
   local running_val
-  running_val=$(prometheus_query 'sum(vllm:num_requests_running{pod=~"qwen36-hybrid.*"})')
+  running_val=$(prometheus_query 'sum(vllm:num_requests_running{pod=~"qwen-hybrid.*"})')
 
   if [[ "$running_val" =~ ^[0-9] && "${running_val}" != "0" ]]; then
     pass "vllm:num_requests_running=${running_val}"
@@ -535,7 +535,7 @@ e2e_phase4_metrics_under_load() {
 
   step "4.3 TTFT P95 available in Prometheus"
   local ttft_p95
-  ttft_p95=$(prometheus_query 'histogram_quantile(0.95, sum(rate(vllm:time_to_first_token_seconds_bucket{pod=~"qwen36-hybrid.*"}[5m])) by (le))')
+  ttft_p95=$(prometheus_query 'histogram_quantile(0.95, sum(rate(vllm:time_to_first_token_seconds_bucket{pod=~"qwen-hybrid.*"}[5m])) by (le))')
 
   if [[ "$ttft_p95" =~ ^[0-9] ]]; then
     local ttft_ok
@@ -551,7 +551,7 @@ e2e_phase4_metrics_under_load() {
 
   step "4.4 E2E latency P95 available in Prometheus"
   local e2e_p95
-  e2e_p95=$(prometheus_query 'histogram_quantile(0.95, sum(rate(vllm:e2e_request_latency_seconds_bucket{pod=~"qwen36-hybrid.*"}[5m])) by (le))')
+  e2e_p95=$(prometheus_query 'histogram_quantile(0.95, sum(rate(vllm:e2e_request_latency_seconds_bucket{pod=~"qwen-hybrid.*"}[5m])) by (le))')
 
   if [[ "$e2e_p95" =~ ^[0-9] ]]; then
     pass "E2E latency P95: ${e2e_p95}s"

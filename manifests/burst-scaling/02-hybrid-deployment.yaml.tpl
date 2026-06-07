@@ -3,14 +3,19 @@
 #
 # This file is a Terraform template. After 'terraform apply', the rendered
 # manifest is written to manifests/burst-scaling/rendered/02-hybrid-deployment.yaml
+#
+# BASELINE (on-premises, CPU) — VMware vSphere flavor.
+# Runs Qwen2.5-1.5B-Instruct on CPU on the on-premises hybrid node. No GPU
+# on-premises. When this baseline saturates, KEDA + Karpenter burst the larger
+# model on GPU spot nodes in the cloud (see 03-burst-deployment).
 # =============================================================================
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: qwen36-hybrid
+  name: qwen-hybrid
   labels:
     app: vllm-burst-scaling
-    model: qwen36-35b-a3b
+    model: qwen25-1-5b
     tier: hybrid
 spec:
   replicas: 1
@@ -21,76 +26,69 @@ spec:
       maxSurge: 1
   selector:
     matchLabels:
-      model: qwen36-35b-a3b
+      model: qwen25-1-5b
       tier: hybrid
   template:
     metadata:
       labels:
         app: vllm-burst-scaling
-        model: qwen36-35b-a3b
+        model: qwen25-1-5b
         tier: hybrid
     spec:
       dnsPolicy: ClusterFirst
-      tolerations:
-        - key: nvidia.com/gpu
-          operator: Exists
-          effect: NoSchedule
+      # Pin the baseline to the on-premises hybrid node (CPU). No GPU toleration.
       nodeSelector:
         eks.amazonaws.com/compute-type: hybrid
       containers:
         - name: vllm
-          image: ${dlc_account_id}.dkr.ecr.${region}.amazonaws.com/vllm:0.19.1-gpu-py312-cu129-ubuntu22.04-ec2-v1.1-soci
+          # Official vLLM CPU image (OpenAI-compatible server, CPU build).
+          # Mirror to your private ECR for production to avoid Docker Hub rate limits.
+          image: vllm/vllm-openai-cpu:latest
           args:
             - '--port=8000'
-            - '--model=/model'
-            - '--served-model-name=Qwen3.6-35B-A3B-AWQ'
-            - '--quantization=awq_marlin'
-            - '--tensor-parallel-size=4'
-            - '--gpu_memory_utilization=0.85'
+            - '--model=Qwen/Qwen2.5-1.5B-Instruct'
+            - '--served-model-name=Qwen2.5-1.5B-Instruct'
+            - '--dtype=bfloat16'
             - '--max-model-len=4096'
-            - '--max-num-seqs=32'
-            - '--dtype=float16'
+            - '--max-num-seqs=16'
             - '--trust-remote-code'
-            - '--reasoning-parser=qwen3'
-            - '--enable-auto-tool-choice'
-            - '--tool-call-parser=qwen3_coder'
           env:
-            - name: VLLM_USE_DEEP_GEMM
-              value: "0"
-            - name: VLLM_USE_FLASHINFER_MOE_FP16
-              value: "1"
+            # vLLM CPU tuning: KV cache space (GiB) in host RAM
+            - name: VLLM_CPU_KVCACHE_SPACE
+              value: "4"
+            # Hugging Face cache on the node (model pulled at first start ~3GB)
+            - name: HF_HOME
+              value: /root/.cache/huggingface
           ports:
             - containerPort: 8000
               name: http
           resources:
             requests:
-              cpu: 8
-              memory: 24Gi
-              nvidia.com/gpu: 4
+              cpu: "3"
+              memory: 6Gi
             limits:
-              cpu: 16
-              memory: 48Gi
-              nvidia.com/gpu: 4
+              cpu: "4"
+              memory: 8Gi
           volumeMounts:
-            - name: model
-              mountPath: /model
-              readOnly: true
+            - name: hf-cache
+              mountPath: /root/.cache/huggingface
           readinessProbe:
             httpGet:
               path: /health
               port: 8000
-            initialDelaySeconds: 120
+            initialDelaySeconds: 90
             periodSeconds: 10
-            failureThreshold: 12
+            failureThreshold: 18
           livenessProbe:
             httpGet:
               path: /health
               port: 8000
-            initialDelaySeconds: 300
+            initialDelaySeconds: 180
             periodSeconds: 30
             failureThreshold: 5
       volumes:
-        - name: model
+        # Model cache on the node's local disk (persists across pod restarts).
+        - name: hf-cache
           hostPath:
-            path: /opt/models/qwen36-awq
-            type: Directory
+            path: /opt/models/hf-cache
+            type: DirectoryOrCreate

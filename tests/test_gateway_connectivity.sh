@@ -100,7 +100,7 @@ else
 fi
 
 # Check Service endpoints include hybrid pod IP
-ENDPOINTS=$(kubectl get endpoints qwen36-burst-svc -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || echo "")
+ENDPOINTS=$(kubectl get endpoints qwen-burst-svc -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || echo "")
 if echo "$ENDPOINTS" | grep -q "10\.200\."; then
   pass "Service endpoints include hybrid pod IP"
 else

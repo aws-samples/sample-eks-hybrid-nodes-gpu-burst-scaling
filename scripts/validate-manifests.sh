@@ -30,9 +30,9 @@ echo "=== Dry-run apply ==="
 check "kubectl dry-run all manifests" \
     kubectl apply --dry-run=client -f "${DIR}/"
 
-echo "=== Label consistency (model: qwen36-35b-a3b) ==="
+echo "=== Label consistency (model: qwen25-1-5b) ==="
 for f in 02-hybrid-deployment.yaml 03-burst-deployment.yaml 01-service.yaml; do
-    check "${f} has model label" grep -q 'model: qwen36-35b-a3b' "${DIR}/${f}"
+    check "${f} has model label" grep -q 'model: qwen25-1-5b' "${DIR}/${f}"
 done
 
 echo "=== GPU resource requests ==="
@@ -42,8 +42,8 @@ check "burst requests 1 GPU" \
     grep -E "nvidia.com/gpu:[[:space:]]+1" "${DIR}/03-burst-deployment.yaml"
 
 echo "=== KEDA ScaledObject targets burst deployment ==="
-check "scaler targets qwen36-burst" \
-    grep -q "name: qwen36-burst" "${DIR}/04-keda-scaledobject.yaml"
+check "scaler targets qwen-burst" \
+    grep -q "name: qwen-burst" "${DIR}/04-keda-scaledobject.yaml"
 
 echo
 echo "Result: ${PASS} passed, ${FAIL} failed"

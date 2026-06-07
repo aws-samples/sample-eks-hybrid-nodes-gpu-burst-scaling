@@ -21,19 +21,20 @@ output "vpc_id_eks" {
   value       = module.vpc.vpc_id
 }
 
-output "vpc_id_hybrid" {
-  description = "VPC ID of the hybrid network"
-  value       = aws_vpc.hybrid.id
-}
-
 output "transit_gateway_id" {
-  description = "Transit Gateway ID connecting EKS and hybrid VPCs"
+  description = "Transit Gateway ID connecting the EKS VPC to the on-premises VPN"
   value       = aws_ec2_transit_gateway.main.id
 }
 
-output "hybrid_node_instance_id" {
-  description = "EC2 instance ID of the hybrid GPU node"
-  value       = aws_instance.hybrid_gpu_node.id
+output "ssm_activation_id" {
+  description = "SSM activation ID used to register the on-premises vSphere hybrid node via nodeadm"
+  value       = aws_ssm_activation.hybrid_node.id
+}
+
+output "ssm_activation_code" {
+  description = "SSM activation code for the on-premises vSphere hybrid node (sensitive)"
+  value       = aws_ssm_activation.hybrid_node.activation_code
+  sensitive   = true
 }
 
 output "configure_kubectl" {

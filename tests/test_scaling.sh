@@ -27,9 +27,9 @@ set -uo pipefail
 # ---------------------------------------------------------------------------
 KEDA_NS="${KEDA_NS:-kube-system}"
 DEFAULT_NS="${DEFAULT_NS:-default}"
-SCALEDOBJECT_NAME="${SCALEDOBJECT_NAME:-qwen36-burst-scaler}"
-BURST_DEPLOY="${BURST_DEPLOY:-qwen36-burst}"
-HYBRID_DEPLOY="${HYBRID_DEPLOY:-qwen36-hybrid}"
+SCALEDOBJECT_NAME="${SCALEDOBJECT_NAME:-qwen-burst-scaler}"
+BURST_DEPLOY="${BURST_DEPLOY:-qwen-burst}"
+HYBRID_DEPLOY="${HYBRID_DEPLOY:-qwen-hybrid}"
 MODEL_NAME="${MODEL_NAME:-Qwen3.6-35B-A3B-AWQ}"
 KARPENTER_NODEPOOL="${KARPENTER_NODEPOOL:-gpu}"
 COOLDOWN_PERIOD="${COOLDOWN_PERIOD:-300}"          # seconds
