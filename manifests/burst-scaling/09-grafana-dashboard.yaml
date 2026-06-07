@@ -290,7 +290,7 @@ data:
       "time": {"from": "now-1h", "to": "now"},
       "timepicker": {},
       "timezone": "",
-      "title": "vLLM Burst Scaling - Qwen3.6-35B",
+      "title": "vLLM Burst Scaling - Qwen2.5-1.5B",
       "uid": "vllm-burst-scaling",
       "version": 1,
       "weekStart": ""

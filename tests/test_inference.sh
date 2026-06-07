@@ -4,13 +4,13 @@
 
 # =============================================================================
 # tests/test_inference.sh
-# Model functional tests — vLLM + Qwen3.6-35B-A3B-AWQ
+# Model functional tests — vLLM + Qwen2.5-1.5B-Instruct
 #
 # Covers:
 #   - vLLM health endpoint responding
 #   - Basic inference (chat completions)
 #   - Streaming inference (SSE)
-#   - Correct model loaded (Qwen3.6-35B-A3B-AWQ)
+#   - Correct model loaded (Qwen2.5-1.5B-Instruct)
 #   - Acceptable latency (TTFT < 2s, E2E < 30s)
 #   - Minimum throughput (> 10 tokens/s)
 #
@@ -25,7 +25,7 @@ set -uo pipefail
 # Configuration
 # ---------------------------------------------------------------------------
 VLLM_PORT="${VLLM_PORT:-8000}"
-MODEL_NAME="${MODEL_NAME:-Qwen3.6-35B-A3B-AWQ}"
+MODEL_NAME="${MODEL_NAME:-Qwen2.5-1.5B-Instruct}"
 TTFT_THRESHOLD_S="${TTFT_THRESHOLD_S:-2.0}"      # seconds
 E2E_THRESHOLD_S="${E2E_THRESHOLD_S:-30.0}"        # seconds
 MIN_THROUGHPUT_TPS="${MIN_THROUGHPUT_TPS:-10}"    # tokens/s
@@ -183,7 +183,7 @@ test_correct_model_loaded() {
     return
   fi
 
-  # 2.1 /v1/models lists the model Qwen3.6-35B-A3B-AWQ
+  # 2.1 /v1/models lists the model Qwen2.5-1.5B-Instruct
   local models_json
   models_json=$(kubectl exec "$hybrid_pod" \
     -- sh -c "curl -s http://localhost:${VLLM_PORT}/v1/models" 2>/dev/null || echo "")
@@ -592,7 +592,7 @@ test_inference_edge_cases() {
 # ---------------------------------------------------------------------------
 run_all_tests() {
   echo -e "\n${BLUE}╔══════════════════════════════════════════════════════════════╗${NC}"
-  echo -e "${BLUE}║  test_inference.sh — vLLM + Qwen3.6-35B-A3B-AWQ            ║${NC}"
+  echo -e "${BLUE}║  test_inference.sh — vLLM + Qwen2.5-1.5B-Instruct            ║${NC}"
   echo -e "${BLUE}╚══════════════════════════════════════════════════════════════╝${NC}"
   echo -e "Model: ${MODEL_NAME} | TTFT threshold: ${TTFT_THRESHOLD_S}s | E2E threshold: ${E2E_THRESHOLD_S}s"
   echo -e "Timestamp: $(date -u '+%Y-%m-%dT%H:%M:%SZ')\n"

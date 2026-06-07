@@ -73,7 +73,7 @@ spec:
                 for i in \$(seq 1 ${BATCH}); do
                   curl -s http://${HYBRID_IP}:${VLLM_PORT}/v1/chat/completions \
                     -H "Content-Type: application/json" \
-                    -d '{"model":"Qwen3.6-35B-A3B-AWQ","messages":[{"role":"user","content":"Write an extremely detailed and comprehensive essay about the complete history of artificial intelligence"}],"max_tokens":1024}' &
+                    -d '{"model":"Qwen2.5-1.5B-Instruct","messages":[{"role":"user","content":"Write an extremely detailed and comprehensive essay about the complete history of artificial intelligence"}],"max_tokens":1024}' &
                 done
                 sleep 5
               done

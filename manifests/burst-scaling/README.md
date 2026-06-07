@@ -48,7 +48,7 @@ with `runai_streamer` and join the Service.
 - KEDA ≥ 2.14 installed in `keda` namespace
 - `kube-prometheus-stack` (Prometheus + Grafana) in `monitoring` namespace
 - NVIDIA device plugin daemonset (cluster + hybrid nodes)
-- Amazon Simple Storage Service (Amazon S3) bucket with the AWQ model: `s3://vllm-qwen35b-models/Qwen3.6-35B-A3B-AWQ/`
+- Amazon Simple Storage Service (Amazon S3) bucket with the AWQ model: `s3://vllm-qwen35b-models/Qwen2.5-1.5B-Instruct/`
 - IRSA `ServiceAccount` `model-storage-sa` (`s3:GetObject`, `s3:ListBucket`)
 - Hybrid node has the model pre-staged at `/opt/models/qwen-model`
 

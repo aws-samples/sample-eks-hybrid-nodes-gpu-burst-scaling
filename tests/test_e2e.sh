@@ -22,7 +22,7 @@ set -uo pipefail
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-MODEL_NAME="${MODEL_NAME:-Qwen3.6-35B-A3B-AWQ}"
+MODEL_NAME="${MODEL_NAME:-Qwen2.5-1.5B-Instruct}"
 BURST_DEPLOY="${BURST_DEPLOY:-qwen-burst}"
 HYBRID_DEPLOY="${HYBRID_DEPLOY:-qwen-hybrid}"
 SCALEDOBJECT_NAME="${SCALEDOBJECT_NAME:-qwen-burst-scaler}"
