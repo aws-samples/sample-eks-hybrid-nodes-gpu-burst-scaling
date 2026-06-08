@@ -362,6 +362,24 @@ aws ec2 describe-instances --region ap-northeast-1 \
   xargs aws ec2 terminate-instances --region ap-northeast-1 --instance-ids
 ```
 
+### Baseline pod crashes with SIGILL / "failed to be inspected" (older CPUs without AVX2)
+
+The official `vllm/vllm-openai-cpu` image is built with AVX2/AVX-512 instructions.
+On-premises hosts with older CPUs (e.g. pre-Haswell, AVX1 only) will crash the baseline
+pod with `Signals.SIGILL` (Illegal Instruction) while loading the model.
+
+**Check the host CPU flags (on the vSphere VM):**
+```bash
+grep -m1 flags /proc/cpuinfo | tr ' ' '\n' | grep -iE 'avx|avx2|avx512'
+```
+
+**Options:**
+- Enterprise datacenters: modern server CPUs (with AVX-512) run the vLLM CPU image as-is.
+- Older lab hardware (AVX1 only): use a serving engine with scalar fallback. Ollama
+  (`ollama/ollama`, model `qwen2.5:1.5b-instruct`, OpenAI-compatible API on port 11434)
+  serves the same model on legacy CPUs. Swap the baseline container image/args accordingly
+  and point the Service `targetPort` to `11434`.
+
 ### Other issues
 
 See [`docs/hybrid-node-known-issues.md`](docs/hybrid-node-known-issues.md) for 7 additional documented issues (Cilium connectivity, Security Groups, DNS, NVIDIA runtime, etc.)
