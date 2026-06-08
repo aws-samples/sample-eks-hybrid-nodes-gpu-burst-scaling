@@ -53,9 +53,11 @@ spec:
             - '--max-num-seqs=16'
             - '--trust-remote-code'
           env:
-            # vLLM CPU tuning: KV cache space (GiB) in host RAM
+            # vLLM CPU tuning: KV cache space (GiB) in host RAM.
+            # Sized to fit an 8GB node (~5.8Gi allocatable after kubelet/CNI/OS):
+            # model ~3GB (1.5B bf16) + 2GB KV cache + runtime overhead.
             - name: VLLM_CPU_KVCACHE_SPACE
-              value: "4"
+              value: "2"
             # Hugging Face cache on the node (model pulled at first start ~3GB)
             - name: HF_HOME
               value: /root/.cache/huggingface
@@ -64,11 +66,11 @@ spec:
               name: http
           resources:
             requests:
-              cpu: "3"
-              memory: 6Gi
+              cpu: "2"
+              memory: 4Gi
             limits:
-              cpu: "4"
-              memory: 8Gi
+              cpu: "3500m"
+              memory: 5Gi
           volumeMounts:
             - name: hf-cache
               mountPath: /root/.cache/huggingface

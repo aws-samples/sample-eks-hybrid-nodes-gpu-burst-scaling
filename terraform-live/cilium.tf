@@ -23,7 +23,7 @@ resource "helm_release" "cilium" {
       mode: cluster-pool
       operator:
         clusterPoolIPv4PodCIDRList:
-          - "10.200.0.0/16"
+          - "${var.remote_pod_cidr}"
         clusterPoolIPv4MaskSize: 25
     routingMode: tunnel
     tunnelProtocol: vxlan
