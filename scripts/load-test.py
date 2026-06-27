@@ -74,7 +74,7 @@ def build_payload(prompt_tokens: int, max_tokens: int) -> dict:
     # Each "token" approximated as a 4-char word in the prompt body.
     body = " ".join(["hello"] * prompt_tokens)
     return {
-        "model": "Qwen3.6-35B-A3B-AWQ",
+        "model": "Qwen2.5-1.5B-Instruct",
         "messages": [{"role": "user", "content": body}],
         "max_tokens": max_tokens,
         "temperature": 0.7,

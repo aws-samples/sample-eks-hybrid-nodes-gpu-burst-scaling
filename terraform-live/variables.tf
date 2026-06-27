@@ -4,7 +4,7 @@
 variable "cluster_name" {
   description = "Name of the EKS cluster"
   type        = string
-  default     = "llm-k8sv4"
+  default     = "llm-vmware-hybrid"
 }
 
 variable "region" {
@@ -18,28 +18,42 @@ variable "region" {
   }
 }
 
-variable "hybrid_vpc_cidr" {
-  description = "CIDR block for the hybrid VPC simulating on-premises environment"
-  type        = string
-  default     = "10.100.0.0/16"
-}
+################################################################################
+# On-premises (VMware vSphere) networking
+#
+# Unlike the upstream sample (which simulates on-premises with a second VPC),
+# this VMware flavor connects to a REAL on-premises vSphere environment over a
+# Site-to-Site VPN attached to the Transit Gateway. The hybrid node is a VM in
+# vCenter, registered via SSM activation + nodeadm.
+################################################################################
 
-variable "hybrid_subnet_cidr" {
-  description = "CIDR block for the hybrid private subnet"
+variable "onprem_node_cidr" {
+  description = "On-premises LAN CIDR where the vSphere hybrid node(s) live (RemoteNodeNetwork)"
   type        = string
-  default     = "10.100.0.0/24"
+  default     = "192.168.3.0/24"
 }
 
 variable "remote_pod_cidr" {
-  description = "CIDR block for remote pods running on hybrid nodes"
+  description = "CIDR block for pods running on the on-premises hybrid nodes (RemotePodNetwork, reached via Hybrid Nodes Gateway VXLAN)"
   type        = string
-  default     = "10.200.0.0/16"
+  default     = "10.201.0.0/16"
 }
 
-variable "instance_type" {
-  description = "EC2 instance type for the hybrid GPU node"
+variable "customer_gateway_ip" {
+  description = "Public IP of the on-premises VPN endpoint (customer gateway). For dynamic residential IPs, update via DDNS automation."
   type        = string
-  default     = "g6.12xlarge"
+}
+
+variable "customer_gateway_bgp_asn" {
+  description = "BGP ASN of the on-premises VPN router (pfSense/edge). Underlay routing is BGP."
+  type        = number
+  default     = 65000
+}
+
+variable "tgw_amazon_side_asn" {
+  description = "Amazon-side BGP ASN for the Transit Gateway"
+  type        = number
+  default     = 64512
 }
 
 variable "grafana_admin_password" {

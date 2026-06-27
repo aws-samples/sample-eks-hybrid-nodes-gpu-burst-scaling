@@ -1,41 +1,43 @@
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
-  name: qwen36-burst-scaler
+  name: qwen-burst-scaler
   labels:
     app: vllm-burst-scaling
 spec:
   scaleTargetRef:
-    name: qwen36-burst
+    name: qwen-burst
   minReplicaCount: 0
   maxReplicaCount: 4
   pollingInterval: 15
   cooldownPeriod: 300
   triggers:
-    # Trigger 1: Queue depth ratio (waiting/running > 2)
-    # Most robust at low load — detects scheduler queueing once batch is saturated
+    # KEDA monitors ONLY the on-premises CPU baseline (qwen-hybrid) — never the
+    # burst pods — to avoid a feedback loop. Thresholds are calibrated for a
+    # small model on CPU, where saturation appears earlier than on GPU.
+    #
+    # Trigger 1: Queue depth ratio (waiting/running). Most robust at low load.
     - type: prometheus
       metadata:
         serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
         query: |
-          sum(vllm:num_requests_waiting{pod=~"qwen36-hybrid.*"}) / clamp_min(sum(vllm:num_requests_running{pod=~"qwen36-hybrid.*"}), 1)
+          sum(vllm:num_requests_waiting{pod=~"qwen-hybrid.*"}) / clamp_min(sum(vllm:num_requests_running{pod=~"qwen-hybrid.*"}), 1)
         threshold: "2"
-        activationThreshold: "1.5"
-    # Trigger 2: TTFT P95 > 0.5s (activation at 0.3s)
-    # Best leading indicator of overload — KV-cache pressure shows up here first
+        activationThreshold: "1"
+    # Trigger 2: TTFT P95. On CPU the time-to-first-token is higher than on GPU,
+    # so thresholds are raised accordingly (leading indicator of saturation).
     - type: prometheus
       metadata:
         serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
         query: |
-          histogram_quantile(0.95, sum(rate(vllm:time_to_first_token_seconds_bucket{pod=~"qwen36-hybrid.*"}[2m])) by (le))
-        threshold: "0.5"
-        activationThreshold: "0.3"
-    # Trigger 3: E2E latency P95 > 10s (activation at 7s)
-    # Backstop for long generations not captured by TTFT
+          histogram_quantile(0.95, sum(rate(vllm:time_to_first_token_seconds_bucket{pod=~"qwen-hybrid.*"}[2m])) by (le))
+        threshold: "2"
+        activationThreshold: "1"
+    # Trigger 3: E2E latency P95. Backstop for long generations on CPU.
     - type: prometheus
       metadata:
         serverAddress: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
         query: |
-          histogram_quantile(0.95, sum(rate(vllm:e2e_request_latency_seconds_bucket{pod=~"qwen36-hybrid.*"}[2m])) by (le))
-        threshold: "10"
-        activationThreshold: "7"
+          histogram_quantile(0.95, sum(rate(vllm:e2e_request_latency_seconds_bucket{pod=~"qwen-hybrid.*"}[2m])) by (le))
+        threshold: "20"
+        activationThreshold: "12"

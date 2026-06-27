@@ -1,14 +1,29 @@
-# EKS Hybrid Nodes + Burst Scaling — LLM Inference Platform
+# EKS Hybrid Nodes + Burst Scaling — LLM Inference Platform (VMware vSphere on-premises)
 
 
 > **Important:** This sample is for demonstration purposes only and should be thoroughly reviewed for security, compliance, and cost implications before any production use. AWS customers are responsible for making their own independent assessment of the information in this document.
 
-Production-ready platform for LLM inference on Amazon Elastic Kubernetes Service (Amazon EKS) with automatic hybrid-to-cloud burst scaling. Combines on-premises GPU capacity (Amazon Elastic Compute Cloud (Amazon EC2) in hybrid Amazon Virtual Private Cloud (Amazon VPC)) with cloud GPU spot instances, orchestrated by KEDA and Karpenter.
+LLM inference platform on Amazon Elastic Kubernetes Service (Amazon EKS) with automatic
+hybrid-to-cloud burst scaling, where the **on-premises baseline runs on a real VMware
+vSphere environment**. The baseline LLM runs on **CPU** on an on-premises vSphere VM
+(EKS Hybrid Node) — no GPU required on-premises. When the baseline saturates, KEDA +
+Karpenter burst GPU spot capacity in the AWS cloud. Pod-to-pod connectivity between
+cloud and on-premises flows through the **EKS Hybrid Nodes Gateway** (VXLAN).
 
-**Model:** Qwen 3.6-35B-A3B-AWQ (23GB, 4-bit quantized)  
-**Baseline:** EC2 g6.12xlarge (4× NVIDIA L4, TP=4)  
-**Burst:** g6/g6e/g7e spot instances (1× GPU, TP=1)  
-**Region:** ap-northeast-1 | **K8s:** 1.35 | **Cluster:** llm-k8sv4
+> **This is the VMware flavor** of the upstream sample. The upstream version simulates
+> "on-premises" with a second VPC in AWS; this version connects a **real on-premises
+> vSphere** datacenter over a Site-to-Site VPN (Transit Gateway). It targets the common
+> enterprise scenario: customers running VMware on-premises who want to burst GPU
+> workloads to the cloud without buying GPUs for their datacenter.
+
+**Baseline:** Qwen2.5-1.5B-Instruct on **CPU** (vSphere VM, on-premises)
+**Burst:** g6/g6e/g7e GPU spot instances (cloud, via Karpenter)
+**On-prem transport:** Site-to-Site VPN over Transit Gateway (BGP underlay)
+**Pod networking:** EKS Hybrid Nodes Gateway (VXLAN overlay)
+**K8s:** 1.35
+
+> See [`docs/vsphere-onprem-setup.md`](docs/vsphere-onprem-setup.md) for provisioning the
+> on-premises vSphere hybrid node.
 
 ---
 
@@ -129,8 +144,13 @@ The Gateway provides transparent pod-to-pod connectivity between Amazon Virtual 
 
 ## Deployment Instructions
 
-> **Before deploying:** Copy `terraform-live/terraform.tfvars.example` to `terraform-live/terraform.tfvars` and fill in your environment-specific values (AWS account ID, region, VPC CIDRs). See the example file for all required variables.
+> **Before deploying:** Copy `terraform-live/terraform.tfvars.example` to `terraform-live/terraform.tfvars` and fill in your environment-specific values (region, on-premises CIDRs, VPN customer gateway IP/ASN). See the example file for all required variables.
 
+> **Architecture note:** Unlike the upstream sample (single `terraform apply` that also
+> creates the on-premises EC2 node in a simulated VPC), this VMware flavor splits the
+> deployment: Terraform provisions the **AWS side** (cluster, VPN, gateway nodes), and
+> the **on-premises vSphere VM** is provisioned in your vCenter and joined via `nodeadm`.
+> This mirrors how a real on-premises hybrid node is onboarded.
 
 ### Prerequisites
 
@@ -140,41 +160,56 @@ The Gateway provides transparent pod-to-pod connectivity between Amazon Virtual 
 | Terraform | ≥ 1.5 | `brew install terraform` |
 | kubectl | ≥ 1.28 | `brew install kubectl` |
 | SSM Plugin | latest | [AWS Docs](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html) |
+| VMware vSphere / vCenter | — | with capacity for one Ubuntu 22.04 VM (4 vCPU / 8 GB) |
+| Site-to-Site VPN edge | — | on-premises router (e.g. pfSense) terminating the VPN, BGP-capable |
 
-### Phase 1: Infrastructure
+### Phase 1: AWS Infrastructure
 
 ```bash
 cd terraform-live
 cp terraform.tfvars.example terraform.tfvars
-# Edit terraform.tfvars
+# Edit terraform.tfvars (region, onprem_node_cidr, remote_pod_cidr,
+# customer_gateway_ip, customer_gateway_bgp_asn)
 terraform init
 terraform apply
-aws eks update-kubeconfig --name llm-k8sv4 --region ap-northeast-1 2>&1
-cd .. && bash scripts/fix-hybrid-node.sh
+aws eks update-kubeconfig --name <cluster_name> --region <region>
 ```
 
-**Time:** ~35-40 minutes. Creates: Amazon EKS cluster, VPCs, Transit Gateway, hybrid node, Karpenter, KEDA, GPU Operator, Cilium, Prometheus, model download Jobs.
+Creates: Amazon EKS cluster, EKS VPC, Transit Gateway + Site-to-Site VPN (to your
+on-premises edge), Hybrid Nodes Gateway nodes, Karpenter, KEDA, GPU Operator (for burst),
+Cilium (+VTEP), Prometheus, and the SSM activation for the hybrid node.
 
+Capture these outputs for the next phase: `ssm_activation_id`, `ssm_activation_code`.
 
-### Phase 2: Deploy Burst Scaling
+### Phase 2: On-premises vSphere hybrid node
 
-Terraform automatically renders the manifest templates with your environment values (region, S3 bucket, ECR account). Apply the rendered manifests:
+Provision the Ubuntu VM in vCenter and join it to the cluster. Full guide:
+[`docs/vsphere-onprem-setup.md`](docs/vsphere-onprem-setup.md).
+
+```bash
+# On the vSphere VM (after provisioning), run the bootstrap:
+sudo CLUSTER_NAME=<cluster_name> REGION=<region> \
+     ACTIVATION_ID=<ssm_activation_id> ACTIVATION_CODE=<ssm_activation_code> \
+     bash onprem-node-bootstrap.sh
+```
+
+### Phase 3: Deploy Burst Scaling
+
+Terraform renders the manifest templates with your environment values. Apply them:
 
 ```bash
 kubectl apply -f manifests/burst-scaling/rendered/
 ```
 
-> **Note:** The `rendered/` directory is generated by `terraform apply`. If you prefer to apply the raw templates manually, edit the placeholder values in `manifests/burst-scaling/02-hybrid-deployment.yaml` and `03-burst-deployment.yaml`.
-
-### Phase 3: Verify
+### Phase 4: Verify
 
 ```bash
-kubectl get nodes                          # All Ready (3 managed + 1 hybrid)
-kubectl get deploy qwen36-hybrid           # 1/1 Ready
-kubectl get scaledobject qwen36-burst-scaler  # Ready=True, Active=False
+kubectl get nodes                          # managed nodes + 1 on-prem hybrid node, all Ready
+kubectl get deploy qwen-hybrid             # 1/1 Ready (CPU baseline on the vSphere node)
+kubectl get scaledobject qwen-burst-scaler # Ready=True, Active=False
 ```
 
-### Phase 4: Run Demo
+### Phase 5: Run Demo
 
 ```bash
 bash scripts/demo-burst-scaling.sh
@@ -256,74 +291,59 @@ DCGM_FI_DEV_GPU_UTIL
 |-----------|-------------------|
 | Amazon EKS Control Plane | ~$73 |
 | 3× m5.2xlarge (managed nodes) | ~$830 |
-| 1× g6.12xlarge (hybrid, 4× L4) | ~$3,312 |
-| NAT Gateways + AWS Transit Gateway | ~$101 |
-| Burst (spot g6/g6e/g7e, variable) | ~$0.30-0.80/pod/hr |
-| **Total baseline** | **~$4,316/month** |
+| 2× m5.large (Hybrid Nodes Gateway, HA) | ~$140 |
+| NAT Gateway + AWS Transit Gateway + Site-to-Site VPN | ~$135 |
+| Burst (spot g6/g6e/g7e, variable, scale-to-zero) | ~$0.30-0.80/pod/hr |
+| On-premises baseline (vSphere VM, CPU) | customer-owned (no AWS cost) |
+| **Total baseline (cloud)** | **~$1,178/month** |
+
+> The on-premises baseline runs on customer-owned vSphere hardware (no AWS cost), and
+> GPU is only paid for during bursts (scale-to-zero). This is the cost advantage of the
+> VMware flavor versus an always-on cloud GPU baseline.
 
 ---
 
 ## Troubleshooting
 
-### Hybrid node GPU pods stuck in Init:0/1
+### On-premises hybrid node not joining (NotReady / not registered)
 
-After `terraform apply`, the GPU Operator device plugin may fail because `nodeadm init` overwrites the containerd config, removing the NVIDIA Container Toolkit runtime.
+The vSphere VM joins via `nodeadm` + SSM activation. If it doesn't appear or stays `NotReady`:
 
-**Automated fix:**
 ```bash
-bash scripts/fix-hybrid-node.sh
-```
-
-This script automatically:
-1. Finds the hybrid node via AWS Systems Manager (SSM)
-2. Re-runs `nodeadm init` if node hasn't joined
-3. Configures NVIDIA Container Toolkit runtime in containerd
-4. Restarts GPU Operator pods
-5. Verifies 4 GPUs are allocatable
-
-**Manual fix (if script fails):**
-```bash
-# 1. Find hybrid node managed instance ID
-MI_ID=$(aws ssm describe-instance-information --region ap-northeast-1 \
-  --filters "Key=PlatformName,Values=Ubuntu" \
-  --query 'InstanceInformationList[?PingStatus==`Online`].InstanceId' --output text)
-
-# 2. Configure NVIDIA Container Toolkit runtime + restart containerd
-aws ssm send-command --instance-ids $MI_ID --document-name AWS-RunShellScript \
-  --parameters 'commands=["nvidia-ctk runtime configure --runtime=containerd --set-as-default","systemctl restart containerd"]' \
-  --region ap-northeast-1
-
-# 3. Restart GPU operator pods on hybrid node
-kubectl delete pods -n gpu-operator --field-selector spec.nodeName=$MI_ID
-
-# 4. Wait ~2 min, then verify
-kubectl get node $MI_ID -o jsonpath='{.status.allocatable.nvidia\.com/gpu}'
-# Should return: 4
-```
-
-### Hybrid node kubelet inactive after terraform apply
-
-After `terraform apply`, the hybrid node's `nodeadm init` may fail silently during boot due to AWS Identity and Access Management (IAM) policy propagation delay (`eks:ListAccessEntries` not yet available). The cloud-init completes but kubelet stays `inactive (dead)`.
-
-**Diagnosis:**
-```bash
-# Find the hybrid node managed instance ID
-aws ssm describe-instance-information --region ap-northeast-1 \
+# Is the node registered with SSM? (run from your workstation)
+aws ssm describe-instance-information --region <region> \
   --query 'InstanceInformationList[?PlatformName==`Ubuntu`].{ID:InstanceId,Status:PingStatus}' --output table
 
-# Check kubelet status
-aws ssm send-command --instance-ids <MI_ID> --document-name AWS-RunShellScript \
-  --parameters 'commands=["systemctl status kubelet | head -5"]' --region ap-northeast-1
+# On the VM: check kubelet and the bootstrap log
+systemctl status kubelet | head -5
+tail -50 /var/log/onprem-node-bootstrap.log
 ```
 
-**Fix — re-run nodeadm init via SSM:**
+**Common cause — IAM propagation delay** (`eks:ListAccessEntries` not yet available when
+`nodeadm init` first runs). The bootstrap script retries 5×. To re-run manually on the VM:
+
 ```bash
-aws ssm send-command --instance-ids <MI_ID> --document-name AWS-RunShellScript \
-  --parameters 'commands=["nodeadm init --config-source file:///etc/eks/nodeadm-config.yaml"]' \
-  --region ap-northeast-1
+sudo nodeadm init --config-source file:///etc/eks/nodeadm-config.yaml
 ```
 
-The node will join the cluster in ~1-2 minutes. Cilium agent schedules automatically, then node becomes `Ready`.
+The node joins in ~1-2 minutes; the Cilium agent schedules automatically, then the node
+becomes `Ready`. See [`docs/vsphere-onprem-setup.md`](docs/vsphere-onprem-setup.md).
+
+### Pod-to-pod cloud ↔ on-premises fails
+
+The Hybrid Nodes Gateway uses VXLAN (UDP 8472) over the VPN. Verify:
+
+```bash
+# VPN tunnels UP (from your workstation)
+aws ec2 describe-vpn-connections --region <region> \
+  --query 'VpnConnections[0].VgwTelemetry[*].Status' --output text
+
+# Gateway pods healthy (active-standby)
+kubectl -n eks-hybrid-nodes-gateway get pods -o wide
+```
+
+Ensure your on-premises firewall allows UDP 8472 between the hybrid node and the EKS
+nodes over the VPN, and that the on-premises router advertises the node/pod CIDRs (BGP).
 
 ### Karpenter nodes orphaned after terraform destroy
 
@@ -341,6 +361,24 @@ aws ec2 describe-instances --region ap-northeast-1 \
   --query 'Reservations[*].Instances[*].InstanceId' --output text | \
   xargs aws ec2 terminate-instances --region ap-northeast-1 --instance-ids
 ```
+
+### Baseline pod crashes with SIGILL / "failed to be inspected" (older CPUs without AVX2)
+
+The official `vllm/vllm-openai-cpu` image is built with AVX2/AVX-512 instructions.
+On-premises hosts with older CPUs (e.g. pre-Haswell, AVX1 only) will crash the baseline
+pod with `Signals.SIGILL` (Illegal Instruction) while loading the model.
+
+**Check the host CPU flags (on the vSphere VM):**
+```bash
+grep -m1 flags /proc/cpuinfo | tr ' ' '\n' | grep -iE 'avx|avx2|avx512'
+```
+
+**Options:**
+- Enterprise datacenters: modern server CPUs (with AVX-512) run the vLLM CPU image as-is.
+- Older lab hardware (AVX1 only): use a serving engine with scalar fallback. Ollama
+  (`ollama/ollama`, model `qwen2.5:1.5b-instruct`, OpenAI-compatible API on port 11434)
+  serves the same model on legacy CPUs. Swap the baseline container image/args accordingly
+  and point the Service `targetPort` to `11434`.
 
 ### Other issues
 

@@ -9,7 +9,7 @@ that round-robins traffic across all ready pods.
 
 ```mermaid
 flowchart LR
-    Client[Client] -->|HTTP| Svc[Service<br/>qwen36-burst-svc:8000]
+    Client[Client] -->|HTTP| Svc[Service<br/>qwen-burst-svc:8000]
     Svc --> Hybrid[Pod tier=hybrid<br/>1× g6.12xlarge equiv.<br/>4 GPUs, TP=4]
     Svc --> Burst[Pods tier=burst<br/>0..N × g6.2xlarge spot<br/>1 GPU, TP=1]
 
@@ -35,7 +35,7 @@ flowchart LR
 
 **Key idea:** the hybrid pod stays at full tensor parallelism for steady-state
 load. When TTFT, queue depth, or end-to-end latency on the hybrid pod cross
-SLO thresholds, KEDA scales `qwen36-burst` from 0→N. Karpenter then
+SLO thresholds, KEDA scales `qwen-burst` from 0→N. Karpenter then
 provisions `g6.2xlarge` spot nodes; new burst pods stream the model from S3
 with `runai_streamer` and join the Service.
 
@@ -48,9 +48,9 @@ with `runai_streamer` and join the Service.
 - KEDA ≥ 2.14 installed in `keda` namespace
 - `kube-prometheus-stack` (Prometheus + Grafana) in `monitoring` namespace
 - NVIDIA device plugin daemonset (cluster + hybrid nodes)
-- Amazon Simple Storage Service (Amazon S3) bucket with the AWQ model: `s3://vllm-qwen35b-models/Qwen3.6-35B-A3B-AWQ/`
+- Amazon Simple Storage Service (Amazon S3) bucket with the AWQ model: `s3://vllm-qwen35b-models/Qwen2.5-1.5B-Instruct/`
 - IRSA `ServiceAccount` `model-storage-sa` (`s3:GetObject`, `s3:ListBucket`)
-- Hybrid node has the model pre-staged at `/opt/models/qwen36-awq`
+- Hybrid node has the model pre-staged at `/opt/models/qwen-model`
 
 ## Deployment
 
@@ -73,7 +73,7 @@ Validate:
 ```bash
 scripts/validate-manifests.sh        # static checks
 scripts/integration-test.sh          # live cluster checks
-kubectl get scaledobject qwen36-burst-scaler   # Ready=True
+kubectl get scaledobject qwen-burst-scaler   # Ready=True
 kubectl get pods -l app=vllm-burst-scaling -o wide
 ```
 
@@ -81,13 +81,13 @@ Run the load test to demonstrate the burst lifecycle:
 
 ```bash
 pip install aiohttp
-python scripts/load-test.py --endpoint http://qwen36-burst-svc:8000
+python scripts/load-test.py --endpoint http://qwen-burst-svc:8000
 ```
 
 ## KEDA triggers
 
 The `ScaledObject` defines three Prometheus triggers, all filtered to
-`pod=~"qwen36-hybrid.*"` so that scaling decisions are driven by **hybrid
+`pod=~"qwen-hybrid.*"` so that scaling decisions are driven by **hybrid
 saturation**, not aggregate load (which would create a feedback loop).
 
 | Trigger | Query | Activation | Threshold | Rationale |
@@ -112,9 +112,9 @@ saturation**, not aggregate load (which would create a feedback loop).
 Useful queries:
 
 ```bash
-kubectl describe scaledobject qwen36-burst-scaler
+kubectl describe scaledobject qwen-burst-scaler
 kubectl logs -n keda deploy/keda-operator | tail -100
-kubectl get hpa keda-hpa-qwen36-burst-scaler -o yaml
+kubectl get hpa keda-hpa-qwen-burst-scaler -o yaml
 ```
 
 ## Design note: separate deployments vs single HPA

@@ -14,7 +14,7 @@ set -uo pipefail
 PASS=0
 FAIL=0
 NS="${NAMESPACE:-default}"
-SVC="qwen36-burst-svc"
+SVC="qwen-burst-svc"
 
 ok()  { echo "  PASS  $1"; PASS=$((PASS + 1)); }
 err() { echo "  FAIL  $1"; FAIL=$((FAIL + 1)); }
@@ -46,7 +46,7 @@ kubectl -n "${NS}" run "${TEST_POD}" --rm -i --restart=Never \
     || err "/v1/models did not respond (see /tmp/models.$$)"
 
 echo "=== KEDA ScaledObject status ==="
-READY=$(kubectl -n "${NS}" get scaledobject qwen36-burst-scaler \
+READY=$(kubectl -n "${NS}" get scaledobject qwen-burst-scaler \
     -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)
 [ "${READY}" = "True" ] && ok "ScaledObject Ready=True" \
     || err "ScaledObject Ready=${READY:-unknown}"

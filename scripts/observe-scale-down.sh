@@ -30,9 +30,9 @@ echo "Burst will scale to 0 when queue is empty for ${COOLDOWN}s."
 echo ""
 
 for i in $(seq 1 24); do
-  BURST=$(kubectl get deploy qwen36-burst -o jsonpath='{.status.readyReplicas}' 2>/dev/null)
+  BURST=$(kubectl get deploy qwen-burst -o jsonpath='{.status.readyReplicas}' 2>/dev/null)
   BURST=${BURST:-0}
-  ACTIVE=$(kubectl get scaledobject qwen36-burst-scaler -o jsonpath='{.status.conditions[?(@.type=="Active")].status}' 2>/dev/null)
+  ACTIVE=$(kubectl get scaledobject qwen-burst-scaler -o jsonpath='{.status.conditions[?(@.type=="Active")].status}' 2>/dev/null)
   NODES=$(kubectl get nodes -l karpenter.sh/nodepool=gpu --no-headers 2>/dev/null | wc -l | tr -d ' ')
   echo "[$(date +%H:%M:%S)] burst_replicas=${BURST} | KEDA_active=${ACTIVE} | gpu_nodes=${NODES}"
   if [ "$BURST" = "0" ] && [ "$ACTIVE" = "False" ]; then

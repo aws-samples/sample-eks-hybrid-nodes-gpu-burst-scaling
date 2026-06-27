@@ -50,17 +50,6 @@ resource "aws_iam_policy" "hybrid_node_eks" {
           "ecr:BatchGetImage"
         ]
         Resource = "*"
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "s3:GetObject",
-          "s3:ListBucket"
-        ]
-        Resource = [
-          "arn:aws:s3:::vllm-qwen35b-models-${data.aws_caller_identity.current.account_id}",
-          "arn:aws:s3:::vllm-qwen35b-models-${data.aws_caller_identity.current.account_id}/*"
-        ]
       }
     ]
   })
@@ -89,35 +78,8 @@ resource "aws_ssm_activation" "hybrid_node" {
   }
 }
 
-################################################################################
-# EC2 Instance Profile for hybrid GPU node
-################################################################################
-
-resource "aws_iam_role" "hybrid_node_ec2" {
-  name = "${local.name}-hybrid-node-ec2"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Principal = {
-          Service = "ec2.amazonaws.com"
-        }
-        Action = "sts:AssumeRole"
-      }
-    ]
-  })
-
-  tags = local.tags
-}
-
-resource "aws_iam_role_policy_attachment" "hybrid_node_ec2_ssm" {
-  role       = aws_iam_role.hybrid_node_ec2.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
-}
-
-resource "aws_iam_instance_profile" "hybrid_node_ec2" {
-  name = "${local.name}-hybrid-node-ec2"
-  role = aws_iam_role.hybrid_node_ec2.name
-}
+# NOTE: This VMware flavor does NOT create an EC2 instance profile for the
+# hybrid node (the upstream sample did, because its node was EC2 in a simulated
+# VPC). Here the node is a VM in vCenter on-premises. It registers with the
+# cluster using the SSM activation above (activation id/code) via `nodeadm`.
+# See docs/vsphere-onprem-setup.md for the VM provisioning + nodeadm workflow.

@@ -61,13 +61,13 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "histogram_quantile(0.95, sum(rate(vllm:time_to_first_token_seconds_bucket{pod=~\"qwen36-hybrid.*\"}[2m])) by (le))",
+              "expr": "histogram_quantile(0.95, sum(rate(vllm:time_to_first_token_seconds_bucket{pod=~\"qwen-hybrid.*\"}[2m])) by (le))",
               "legendFormat": "TTFT P95 (hybrid)",
               "refId": "A"
             },
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "histogram_quantile(0.95, sum(rate(vllm:time_to_first_token_seconds_bucket{pod=~\"qwen36-burst.*\"}[2m])) by (le))",
+              "expr": "histogram_quantile(0.95, sum(rate(vllm:time_to_first_token_seconds_bucket{pod=~\"qwen-burst.*\"}[2m])) by (le))",
               "legendFormat": "TTFT P95 (burst)",
               "refId": "B"
             }
@@ -106,13 +106,13 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "kube_deployment_status_replicas_available{deployment=\"qwen36-burst\"}",
+              "expr": "kube_deployment_status_replicas_available{deployment=\"qwen-burst\"}",
               "legendFormat": "Burst replicas (ready)",
               "refId": "A"
             },
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "kube_deployment_spec_replicas{deployment=\"qwen36-burst\"}",
+              "expr": "kube_deployment_spec_replicas{deployment=\"qwen-burst\"}",
               "legendFormat": "Burst replicas (desired)",
               "refId": "B"
             }
@@ -151,13 +151,13 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "avg(DCGM_FI_DEV_GPU_UTIL{exported_pod=~\"qwen36-hybrid.*\"})",
+              "expr": "avg(DCGM_FI_DEV_GPU_UTIL{exported_pod=~\"qwen-hybrid.*\"})",
               "legendFormat": "Hybrid GPU util",
               "refId": "A"
             },
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "avg(DCGM_FI_DEV_GPU_UTIL{exported_pod=~\"qwen36-burst.*\"})",
+              "expr": "avg(DCGM_FI_DEV_GPU_UTIL{exported_pod=~\"qwen-burst.*\"})",
               "legendFormat": "Burst GPU util",
               "refId": "B"
             }
@@ -203,19 +203,19 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "histogram_quantile(0.50, sum(rate(vllm:time_to_first_token_seconds_bucket{pod=~\"qwen36-hybrid.*\"}[2m])) by (le))",
+              "expr": "histogram_quantile(0.50, sum(rate(vllm:time_to_first_token_seconds_bucket{pod=~\"qwen-hybrid.*\"}[2m])) by (le))",
               "legendFormat": "P50 hybrid",
               "refId": "A"
             },
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "histogram_quantile(0.95, sum(rate(vllm:time_to_first_token_seconds_bucket{pod=~\"qwen36-hybrid.*\"}[2m])) by (le))",
+              "expr": "histogram_quantile(0.95, sum(rate(vllm:time_to_first_token_seconds_bucket{pod=~\"qwen-hybrid.*\"}[2m])) by (le))",
               "legendFormat": "P95 hybrid",
               "refId": "B"
             },
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "histogram_quantile(0.99, sum(rate(vllm:time_to_first_token_seconds_bucket{pod=~\"qwen36-hybrid.*\"}[2m])) by (le))",
+              "expr": "histogram_quantile(0.99, sum(rate(vllm:time_to_first_token_seconds_bucket{pod=~\"qwen-hybrid.*\"}[2m])) by (le))",
               "legendFormat": "P99 hybrid",
               "refId": "C"
             }
@@ -261,19 +261,19 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "sum(vllm:num_requests_running{pod=~\"qwen36-hybrid.*\"})",
+              "expr": "sum(vllm:num_requests_running{pod=~\"qwen-hybrid.*\"})",
               "legendFormat": "Running (hybrid)",
               "refId": "A"
             },
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "sum(vllm:num_requests_waiting{pod=~\"qwen36-hybrid.*\"})",
+              "expr": "sum(vllm:num_requests_waiting{pod=~\"qwen-hybrid.*\"})",
               "legendFormat": "Waiting (hybrid)",
               "refId": "B"
             },
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "sum(vllm:num_requests_running{pod=~\"qwen36-burst.*\"})",
+              "expr": "sum(vllm:num_requests_running{pod=~\"qwen-burst.*\"})",
               "legendFormat": "Running (burst)",
               "refId": "C"
             }
@@ -290,7 +290,7 @@ data:
       "time": {"from": "now-1h", "to": "now"},
       "timepicker": {},
       "timezone": "",
-      "title": "vLLM Burst Scaling - Qwen3.6-35B",
+      "title": "vLLM Burst Scaling - Qwen2.5-1.5B",
       "uid": "vllm-burst-scaling",
       "version": 1,
       "weekStart": ""

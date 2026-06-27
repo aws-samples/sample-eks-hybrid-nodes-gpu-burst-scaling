@@ -4,33 +4,32 @@
 
 # =============================================================================
 # tests/test_infrastructure.sh
-# Infrastructure tests — EKS Hybrid Nodes + Burst Scaling
+# Infrastructure tests — EKS Hybrid Nodes + Burst Scaling (VMware vSphere flavor)
 #
 # Covers:
-#   - Nodes Ready (managed + hybrid)
-#   - GPUs allocatable on hybrid node (4× nvidia.com/gpu)
+#   - Nodes Ready (managed + on-premises vSphere hybrid)
+#   - Baseline CPU pod schedulable on the hybrid node (no GPU on-prem)
 #   - Cilium agent running on hybrid node
-#   - TGW connectivity (hybrid → managed, managed → hybrid)
-#   - Correct Security Groups
-#   - Cross-VPC DNS functional
+#   - VPN/TGW connectivity (cloud → on-prem node, on-prem → cloud)
+#   - EKS-side Security Group rules for on-prem traffic
+#   - Cross-environment DNS functional
 #
 # Usage: ./tests/test_infrastructure.sh
-# Requires: kubectl, aws CLI configured with access to cluster llm-k8sv4
+# Requires: kubectl, aws CLI configured with access to the cluster
 # =============================================================================
 set -uo pipefail
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-CLUSTER_NAME="${CLUSTER_NAME:-llm-k8sv4}"
-REGION="${REGION:-ap-northeast-1}"
+CLUSTER_NAME="${CLUSTER_NAME:-llm-vmware-hybrid}"
+REGION="${REGION:-sa-east-1}"
 HYBRID_NODE_LABEL="eks.amazonaws.com/compute-type=hybrid"
 MANAGED_NODE_LABEL="eks.amazonaws.com/compute-type!=hybrid"
 EXPECTED_MANAGED_NODES="${EXPECTED_MANAGED_NODES:-3}"
 EXPECTED_HYBRID_NODES="${EXPECTED_HYBRID_NODES:-1}"
-EXPECTED_GPUS="${EXPECTED_GPUS:-4}"
-HYBRID_VPC_CIDR="${HYBRID_VPC_CIDR:-10.100.0.0/16}"
-EKS_VPC_CIDR="${EKS_VPC_CIDR:-10.0.0.0/16}"
+ONPREM_NODE_CIDR_PREFIX="${ONPREM_NODE_CIDR_PREFIX:-192.168.3}"  # on-prem vSphere LAN
+EKS_VPC_CIDR="${EKS_VPC_CIDR:-10.43.0.0/16}"
 TEST_TIMEOUT="${TEST_TIMEOUT:-30}"  # seconds per test
 
 # ---------------------------------------------------------------------------
@@ -154,60 +153,49 @@ test_managed_nodes_ready() {
 }
 
 # ---------------------------------------------------------------------------
-# SUITE 2 — GPUs Allocatable
+# SUITE 2 — Baseline CPU pod on Hybrid Node (no GPU on-premises)
 # ---------------------------------------------------------------------------
-test_gpu_allocatable() {
-  header "SUITE 2 — GPUs Allocatable on Hybrid Node"
+test_baseline_cpu_on_hybrid() {
+  header "SUITE 2 — Baseline (CPU) on Hybrid Node"
 
   if [[ -z "${HYBRID_NODE_NAME:-}" ]]; then
-    skip "Hybrid node not identified — skipping GPU tests"
+    skip "Hybrid node not identified — skipping baseline tests"
     return
   fi
 
-  # 2.1 nvidia.com/gpu allocatable
-  local gpu_allocatable
-  gpu_allocatable=$(kubectl get node "$HYBRID_NODE_NAME" \
-    -o jsonpath='{.status.allocatable.nvidia\.com/gpu}' 2>/dev/null || echo "0")
-
-  if [[ "${gpu_allocatable:-0}" -ge "$EXPECTED_GPUS" ]]; then
-    pass "GPUs allocatable on hybrid node: ${gpu_allocatable} (expected ≥ ${EXPECTED_GPUS})"
-  else
-    fail "GPUs allocatable on hybrid node: ${gpu_allocatable:-0} (expected ≥ ${EXPECTED_GPUS})"
-  fi
-
-  # 2.2 nvidia.com/gpu capacity
+  # 2.1 Hybrid node has NO GPU (this is a CPU on-premises node by design)
   local gpu_capacity
   gpu_capacity=$(kubectl get node "$HYBRID_NODE_NAME" \
-    -o jsonpath='{.status.capacity.nvidia\.com/gpu}' 2>/dev/null || echo "0")
+    -o jsonpath='{.status.capacity.nvidia\.com/gpu}' 2>/dev/null || echo "")
 
-  if [[ "${gpu_capacity:-0}" -ge "$EXPECTED_GPUS" ]]; then
-    pass "GPUs capacity on hybrid node: ${gpu_capacity} (expected ≥ ${EXPECTED_GPUS})"
+  if [[ -z "$gpu_capacity" || "${gpu_capacity:-0}" -eq 0 ]]; then
+    pass "Hybrid node has no GPU (expected — baseline runs on CPU on-premises)"
   else
-    fail "GPUs capacity on hybrid node: ${gpu_capacity:-0} (expected ≥ ${EXPECTED_GPUS})"
+    info "Hybrid node reports ${gpu_capacity} GPU(s) — unexpected for the VMware CPU baseline"
+    pass "Hybrid node GPU capacity: ${gpu_capacity}"
   fi
 
-  # 2.3 Node has taint nvidia.com/gpu=true:NoSchedule
-  local has_gpu_taint
-  has_gpu_taint=$(kubectl get node "$HYBRID_NODE_NAME" \
-    -o jsonpath='{.spec.taints[?(@.key=="nvidia.com/gpu")].effect}' 2>/dev/null || echo "")
-
-  if [[ "$has_gpu_taint" == "NoSchedule" ]]; then
-    pass "Taint nvidia.com/gpu:NoSchedule present on hybrid node"
+  # 2.2 Hybrid node has allocatable CPU/memory for the baseline
+  local cpu_alloc
+  cpu_alloc=$(kubectl get node "$HYBRID_NODE_NAME" \
+    -o jsonpath='{.status.allocatable.cpu}' 2>/dev/null || echo "")
+  if [[ -n "$cpu_alloc" ]]; then
+    pass "Hybrid node allocatable CPU: ${cpu_alloc}"
   else
-    fail "Taint nvidia.com/gpu:NoSchedule missing on hybrid node (found: '${has_gpu_taint}')"
+    fail "Could not read allocatable CPU on hybrid node"
   fi
 
-  # 2.4 Instance type is g6.12xlarge
-  local instance_type
-  instance_type=$(kubectl get node "$HYBRID_NODE_NAME" \
-    -o jsonpath='{.metadata.labels.node\.kubernetes\.io/instance-type}' 2>/dev/null || echo "")
+  # 2.3 Baseline deployment (qwen-hybrid) scheduled on the hybrid node
+  local baseline_pod_node
+  baseline_pod_node=$(kubectl get pods -l "tier=hybrid" \
+    -o jsonpath='{.items[0].spec.nodeName}' 2>/dev/null || echo "")
 
-  if [[ "$instance_type" == "g6.12xlarge" ]]; then
-    pass "Instance type correct: ${instance_type}"
+  if [[ "$baseline_pod_node" == "$HYBRID_NODE_NAME" ]]; then
+    pass "Baseline pod scheduled on the on-premises hybrid node"
+  elif [[ -z "$baseline_pod_node" ]]; then
+    skip "Baseline pod not found yet (deployment may not be applied)"
   else
-    # Not fatal — could be another type with 4 GPUs
-    info "Instance type: '${instance_type}' (expected g6.12xlarge)"
-    pass "Instance type present (${instance_type})"
+    fail "Baseline pod on '${baseline_pod_node}' (expected hybrid node '${HYBRID_NODE_NAME}')"
   fi
 }
 
@@ -293,13 +281,13 @@ test_tgw_connectivity() {
   fi
   info "Hybrid node IP: ${hybrid_ip}"
 
-  # 4.1 Hybrid node IP is in the hybrid VPC CIDR (10.100.0.0/16)
+  # 4.1 Hybrid node IP is in the on-premises LAN CIDR (192.168.3.0/24)
   local hybrid_octet
-  hybrid_octet=$(echo "$hybrid_ip" | cut -d. -f1-2)
-  if [[ "$hybrid_octet" == "10.100" ]]; then
-    pass "Hybrid node IP (${hybrid_ip}) is in the hybrid VPC CIDR (${HYBRID_VPC_CIDR})"
+  hybrid_octet=$(echo "$hybrid_ip" | cut -d. -f1-3)
+  if [[ "$hybrid_octet" == "$ONPREM_NODE_CIDR_PREFIX" ]]; then
+    pass "Hybrid node IP (${hybrid_ip}) is in the on-premises LAN (${ONPREM_NODE_CIDR_PREFIX}.0/24)"
   else
-    fail "Hybrid node IP (${hybrid_ip}) is not in the expected CIDR ${HYBRID_VPC_CIDR}"
+    fail "Hybrid node IP (${hybrid_ip}) is not in the expected on-prem LAN ${ONPREM_NODE_CIDR_PREFIX}.0/24"
   fi
 
   # 4.2 Managed node can reach hybrid node (ping via debug pod)
@@ -366,82 +354,45 @@ test_tgw_connectivity() {
 }
 
 # ---------------------------------------------------------------------------
-# SUITE 5 — Security Groups
+# SUITE 5 — EKS-side Security Group rules for on-premises traffic
+#
+# In the VMware flavor the hybrid node is a vSphere VM (not an EC2 instance),
+# so there is no AWS security group on the node. Instead we validate the rules
+# on the EKS cluster/node security groups that allow traffic from the
+# on-premises node/pod CIDRs over the VPN.
 # ---------------------------------------------------------------------------
 test_security_groups() {
-  header "SUITE 5 — Security Groups"
+  header "SUITE 5 — EKS Security Group rules for on-prem traffic"
 
-  # 5.1 Hybrid node has security group with rule for port 8000 (vLLM)
   if ! command -v aws &>/dev/null; then
     skip "AWS CLI not available — skipping Security Group tests"
     return
   fi
 
-  local hybrid_instance_id
-  hybrid_instance_id=$(kubectl get node "${HYBRID_NODE_NAME:-}" \
-    -o jsonpath='{.spec.providerID}' 2>/dev/null | sed 's|.*instance/||' || echo "")
+  # Resolve the EKS cluster security group
+  local cluster_sg
+  cluster_sg=$(aws eks describe-cluster --name "$CLUSTER_NAME" --region "$REGION" \
+    --query 'cluster.resourcesVpcConfig.clusterSecurityGroupId' --output text 2>/dev/null || echo "")
 
-  if [[ -z "$hybrid_instance_id" ]]; then
-    skip "Hybrid node instance ID not available via providerID"
+  if [[ -z "$cluster_sg" || "$cluster_sg" == "None" ]]; then
+    skip "Could not resolve cluster security group for ${CLUSTER_NAME}"
     return
   fi
-  info "Hybrid instance ID: ${hybrid_instance_id}"
+  info "Cluster security group: ${cluster_sg}"
 
-  # Get security groups for the instance
-  local sg_ids
-  sg_ids=$(aws ec2 describe-instances \
-    --instance-ids "$hybrid_instance_id" \
+  # 5.1 An ingress rule references the on-prem pod CIDR (10.201) or node LAN (192.168.3)
+  local onprem_ingress
+  onprem_ingress=$(aws ec2 describe-security-group-rules \
+    --filters "Name=group-id,Values=${cluster_sg}" \
     --region "$REGION" \
-    --query 'Reservations[0].Instances[0].SecurityGroups[*].GroupId' \
+    --query 'SecurityGroupRules[?!IsEgress].CidrIpv4' \
     --output text 2>/dev/null || echo "")
 
-  if [[ -z "$sg_ids" ]]; then
-    skip "Could not get Security Groups for instance ${hybrid_instance_id}"
-    return
-  fi
-  info "Security Groups: ${sg_ids}"
-
-  # 5.2 Check if any SG allows traffic on port 8000 (vLLM)
-  local sg_allows_8000=false
-  for sg_id in $sg_ids; do
-    local rules
-    rules=$(aws ec2 describe-security-group-rules \
-      --filters "Name=group-id,Values=${sg_id}" \
-      --region "$REGION" \
-      --query 'SecurityGroupRules[?!IsEgress && (FromPort<=`8000` && ToPort>=`8000`)].GroupRuleId' \
-      --output text 2>/dev/null || echo "")
-    if [[ -n "$rules" ]]; then
-      sg_allows_8000=true
-      info "SG ${sg_id} allows port 8000"
-      break
-    fi
-  done
-
-  if [[ "$sg_allows_8000" == "true" ]]; then
-    pass "Security Group allows traffic on port 8000 (vLLM)"
+  if echo "$onprem_ingress" | grep -qE "10\.201|192\.168\.3"; then
+    pass "EKS cluster SG allows ingress from on-prem CIDRs (pod 10.201 / node 192.168.3)"
   else
-    fail "No Security Group allows traffic on port 8000 (vLLM)"
-  fi
-
-  # 5.3 Check egress rule for EKS VPC (10.0.0.0/16)
-  local sg_egress_eks=false
-  for sg_id in $sg_ids; do
-    local egress_rules
-    egress_rules=$(aws ec2 describe-security-group-rules \
-      --filters "Name=group-id,Values=${sg_id}" \
-      --region "$REGION" \
-      --query 'SecurityGroupRules[?IsEgress].CidrIpv4' \
-      --output text 2>/dev/null || echo "")
-    if echo "$egress_rules" | grep -qE "0\.0\.0\.0/0|10\.0\.0\.0"; then
-      sg_egress_eks=true
-      break
-    fi
-  done
-
-  if [[ "$sg_egress_eks" == "true" ]]; then
-    pass "Security Group has egress rule for EKS VPC"
-  else
-    fail "Security Group has no egress rule for EKS VPC (${EKS_VPC_CIDR})"
+    info "Ingress CIDRs on cluster SG: ${onprem_ingress}"
+    fail "No ingress rule for on-prem CIDRs (10.201 / 192.168.3) on cluster SG"
   fi
 }
 
@@ -501,15 +452,15 @@ test_dns_cross_vpc() {
     --image=busybox:1.36 \
     --restart=Never \
     --rm \
-    --command -- sh -c "nslookup qwen36-burst-svc.default.svc.cluster.local && echo DNS_OK || echo DNS_FAIL" \
+    --command -- sh -c "nslookup qwen-burst-svc.default.svc.cluster.local && echo DNS_OK || echo DNS_FAIL" \
     2>/dev/null || echo "TIMEOUT")
 
   if echo "$svc_dns" | grep -q "DNS_OK"; then
-    pass "DNS resolves qwen36-burst-svc.default.svc.cluster.local"
+    pass "DNS resolves qwen-burst-svc.default.svc.cluster.local"
   elif echo "$svc_dns" | grep -q "TIMEOUT"; then
     skip "DNS test timed out"
   else
-    fail "DNS failed for qwen36-burst-svc: ${svc_dns}"
+    fail "DNS failed for qwen-burst-svc: ${svc_dns}"
   fi
 }
 
@@ -525,7 +476,7 @@ run_all_tests() {
 
   check_prerequisites
   test_managed_nodes_ready
-  test_gpu_allocatable
+  test_baseline_cpu_on_hybrid
   test_cilium_on_hybrid_node
   test_tgw_connectivity
   test_security_groups

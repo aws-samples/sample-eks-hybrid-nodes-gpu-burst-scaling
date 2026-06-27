@@ -16,7 +16,6 @@ locals {
   manifest_template_vars = {
     dlc_account_id = var.dlc_account_id
     region         = var.region
-    model_bucket   = aws_s3_bucket.model_storage.id
   }
 
   manifests_dir = "${path.module}/../manifests/burst-scaling"

@@ -14,6 +14,10 @@ module "eks" {
 
   cluster_endpoint_public_access = true
 
+  # Service CIDR distinct from the upstream sample to avoid overlap when this
+  # cluster shares on-premises transport (Transit Gateway / VPN) with other labs.
+  cluster_service_ipv4_cidr = "172.21.0.0/16"
+
   enable_cluster_creator_admin_permissions = true
   enable_irsa                              = true
   bootstrap_self_managed_addons            = false
@@ -39,10 +43,10 @@ module "eks" {
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets
 
-  # Remote network configuration for hybrid nodes
+  # Remote network configuration for hybrid nodes (real on-premises vSphere)
   cluster_remote_network_config = {
     remote_node_networks = {
-      cidrs = [var.hybrid_subnet_cidr]
+      cidrs = [var.onprem_node_cidr]
     }
     remote_pod_networks = {
       cidrs = [var.remote_pod_cidr]

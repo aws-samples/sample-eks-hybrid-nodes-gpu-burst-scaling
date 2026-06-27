@@ -1,10 +1,9 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: qwen36-burst-svc
+  name: qwen-burst-svc
   labels:
     app: vllm-burst-scaling
-    model: qwen36-35b-a3b
   annotations:
     prometheus.io/scrape: "true"
     prometheus.io/port: "8000"
@@ -14,5 +13,8 @@ spec:
       port: 8000
       protocol: TCP
       targetPort: 8000
+  # Round-robin across BOTH tiers (baseline on-prem CPU + burst cloud GPU).
+  # Selects on the shared app label so requests load-balance over hybrid and
+  # burst pods transparently.
   selector:
-    model: qwen36-35b-a3b
+    app: vllm-burst-scaling

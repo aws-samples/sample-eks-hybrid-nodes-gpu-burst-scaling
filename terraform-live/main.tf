@@ -79,7 +79,7 @@ data "aws_region" "current" {}
 # Locals
 locals {
   name     = var.cluster_name
-  vpc_cidr = "10.0.0.0/16"
+  vpc_cidr = "10.43.0.0/16"
   azs      = data.aws_availability_zones.available.names
 
   # EKS pause container image — uses the EKS addon registry for the cluster region.

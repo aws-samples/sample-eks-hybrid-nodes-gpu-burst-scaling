@@ -27,10 +27,10 @@ set -uo pipefail
 # ---------------------------------------------------------------------------
 KEDA_NS="${KEDA_NS:-kube-system}"
 DEFAULT_NS="${DEFAULT_NS:-default}"
-SCALEDOBJECT_NAME="${SCALEDOBJECT_NAME:-qwen36-burst-scaler}"
-BURST_DEPLOY="${BURST_DEPLOY:-qwen36-burst}"
-HYBRID_DEPLOY="${HYBRID_DEPLOY:-qwen36-hybrid}"
-MODEL_NAME="${MODEL_NAME:-Qwen3.6-35B-A3B-AWQ}"
+SCALEDOBJECT_NAME="${SCALEDOBJECT_NAME:-qwen-burst-scaler}"
+BURST_DEPLOY="${BURST_DEPLOY:-qwen-burst}"
+HYBRID_DEPLOY="${HYBRID_DEPLOY:-qwen-hybrid}"
+MODEL_NAME="${MODEL_NAME:-Qwen2.5-1.5B-Instruct}"
 KARPENTER_NODEPOOL="${KARPENTER_NODEPOOL:-gpu}"
 COOLDOWN_PERIOD="${COOLDOWN_PERIOD:-300}"          # seconds
 SCALE_UP_TIMEOUT="${SCALE_UP_TIMEOUT:-180}"        # timeout for KEDA to activate
@@ -681,18 +681,25 @@ test_static_config_validation() {
     fail "Burst deployment tensor-parallel-size=${burst_tp} (expected 1 for single GPU)"
   fi
 
-  # 6.5 Burst deployment uses S3 as model source
-  local burst_model_arg
-  burst_model_arg=$(kubectl get deployment \
+  # 6.5 Burst deployment model source.
+  # Depending on the burst-model decision (pending): same 1.5B as baseline
+  # (pulled from Hugging Face) OR a larger model streamed from S3. Accept both.
+  local burst_args
+  burst_args=$(kubectl get deployment \
     "$BURST_DEPLOY" \
     -n "$DEFAULT_NS" \
     -o jsonpath='{.spec.template.spec.containers[0].args}' \
-    2>/dev/null | grep -o "s3://[^'\"]*" | head -1 || echo "")
+    2>/dev/null || echo "")
+
+  local burst_model_arg
+  burst_model_arg=$(echo "$burst_args" | grep -o "s3://[^'\"]*" | head -1 || echo "")
 
   if [[ "$burst_model_arg" == s3://* ]]; then
-    pass "Burst deployment uses S3 as model source: ${burst_model_arg}"
+    pass "Burst deployment uses S3 as model source (large-model variant): ${burst_model_arg}"
+  elif echo "$burst_args" | grep -q -- "--model="; then
+    pass "Burst deployment has a model source configured (Hugging Face / same-model variant)"
   else
-    fail "Burst deployment does not use S3 as model source (found: '${burst_model_arg}')"
+    fail "Burst deployment has no model source configured"
   fi
 
   # 6.6 PodDisruptionBudget exists for hybrid
