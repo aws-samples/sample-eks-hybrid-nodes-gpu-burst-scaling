@@ -33,7 +33,7 @@ GPU spot capacity in the cloud (see main README).
 | Resource | Value | Notes |
 |----------|-------|-------|
 | vCPU | 4 | Qwen2.5-1.5B CPU inference |
-| RAM | 8 GB | model ~3 GB (FP16) + kubelet/Cilium/Gateway overhead |
+| RAM | 12 GB | the vLLM CPU engine measured ~8 GiB for this model (pod requests 8Gi), plus kubelet/Cilium/Gateway overhead |
 | Disk | 60 GB | OS + container images + model cache |
 | OS | Ubuntu 22.04 LTS | EKS Hybrid Nodes supported OS |
 | Network | On-prem LAN in `onprem_node_cidr` (default `192.168.3.0/24`) | reachable from AWS over the VPN |

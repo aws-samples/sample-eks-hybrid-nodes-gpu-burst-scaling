@@ -14,7 +14,7 @@
 ################################################################################
 
 resource "aws_ec2_transit_gateway" "main" {
-  description                     = "TGW connecting EKS VPC and on-premises vSphere via VPN"
+  description                     = local.vsphere_mode ? "TGW connecting EKS VPC and on-premises vSphere via VPN" : "TGW connecting EKS VPC and the nested Hyper-V data center VPC"
   amazon_side_asn                 = var.tgw_amazon_side_asn
   default_route_table_association = "enable"
   default_route_table_propagation = "enable"
@@ -37,9 +37,13 @@ resource "aws_ec2_transit_gateway_vpc_attachment" "cluster" {
 
 ################################################################################
 # Customer Gateway + VPN Connection (to on-premises edge router)
+# vsphere mode only. In nested-hyperv mode the data center is a VPC attached to
+# this same TGW (see onprem-nested-hyperv.tf), so there is no customer edge.
 ################################################################################
 
 resource "aws_customer_gateway" "onprem" {
+  count = local.vsphere_mode ? 1 : 0
+
   bgp_asn    = var.customer_gateway_bgp_asn
   ip_address = var.customer_gateway_ip
   type       = "ipsec.1"
@@ -47,10 +51,19 @@ resource "aws_customer_gateway" "onprem" {
   tags = merge(local.tags, {
     Name = "${local.name}-onprem-cgw"
   })
+
+  lifecycle {
+    precondition {
+      condition     = var.customer_gateway_ip != null
+      error_message = "customer_gateway_ip is required when onprem_mode = \"vsphere\"."
+    }
+  }
 }
 
 resource "aws_vpn_connection" "onprem" {
-  customer_gateway_id = aws_customer_gateway.onprem.id
+  count = local.vsphere_mode ? 1 : 0
+
+  customer_gateway_id = aws_customer_gateway.onprem[0].id
   transit_gateway_id  = aws_ec2_transit_gateway.main.id
   type                = "ipsec.1"
   static_routes_only  = false # BGP (dynamic)

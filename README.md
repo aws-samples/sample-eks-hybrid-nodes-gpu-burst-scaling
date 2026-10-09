@@ -25,6 +25,17 @@ cloud and on-premises flows through the **EKS Hybrid Nodes Gateway** (VXLAN).
 > See [`docs/vsphere-onprem-setup.md`](docs/vsphere-onprem-setup.md) for provisioning the
 > on-premises vSphere hybrid node.
 
+> **No vSphere at hand?** Set `onprem_mode = "nested-hyperv"` and the same
+> `terraform apply` builds the on-premises side for you: an Amazon EC2 instance with
+> **nested virtualization** running Windows Server + **Hyper-V**, whose Ubuntu guest VM
+> is the hybrid node. A real hypervisor for demos and PoCs, no datacenter hardware.
+> See [`docs/nested-hyperv-onprem-setup.md`](docs/nested-hyperv-onprem-setup.md).
+>
+> | `onprem_mode` | Hybrid node | Transport to AWS | Who builds the node |
+> |---------------|-------------|------------------|---------------------|
+> | `vsphere` (default) | VM in your vCenter | Site-to-Site VPN (BGP) via Transit Gateway | you (`scripts/onprem-node-bootstrap.sh`) |
+> | `nested-hyperv` | Hyper-V VM on an EC2 `m8i` host | Transit Gateway VPC attachment | Terraform + SSM Automation |
+
 ---
 
 ## Architecture
@@ -160,7 +171,7 @@ The Gateway provides transparent pod-to-pod connectivity between Amazon Virtual 
 | Terraform | ≥ 1.5 | `brew install terraform` |
 | kubectl | ≥ 1.28 | `brew install kubectl` |
 | SSM Plugin | latest | [AWS Docs](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html) |
-| VMware vSphere / vCenter | — | with capacity for one Ubuntu 22.04 VM (4 vCPU / 8 GB) |
+| VMware vSphere / vCenter | — | with capacity for one Ubuntu 22.04 VM (4 vCPU / 12 GB). Not needed with `onprem_mode = "nested-hyperv"` |
 | Site-to-Site VPN edge | — | on-premises router (e.g. pfSense) terminating the VPN, BGP-capable |
 
 ### Phase 1: AWS Infrastructure
@@ -192,6 +203,20 @@ sudo CLUSTER_NAME=<cluster_name> REGION=<region> \
      ACTIVATION_ID=<ssm_activation_id> ACTIVATION_CODE=<ssm_activation_code> \
      bash onprem-node-bootstrap.sh
 ```
+
+#### Phase 2 alternative: `onprem_mode = "nested-hyperv"`
+
+Nothing to run by hand: `terraform apply` already started the SSM Automation that
+installs Hyper-V on the host, builds the LAN and the Ubuntu VM, and joins it with the
+same SSM activation. It starts as soon as the cluster exists and takes ~10 min, so the
+node is usually `Ready` by the time `apply` returns:
+
+```bash
+terraform output -raw nested_setup_status_command | bash   # ... Success
+kubectl get nodes -l eks.amazonaws.com/compute-type=hybrid  # hybrid-node VM Ready
+```
+
+Full guide: [`docs/nested-hyperv-onprem-setup.md`](docs/nested-hyperv-onprem-setup.md).
 
 ### Phase 3: Deploy Burst Scaling
 
@@ -300,6 +325,10 @@ DCGM_FI_DEV_GPU_UTIL
 > The on-premises baseline runs on customer-owned vSphere hardware (no AWS cost), and
 > GPU is only paid for during bursts (scale-to-zero). This is the cost advantage of the
 > VMware flavor versus an always-on cloud GPU baseline.
+>
+> In `nested-hyperv` mode the "on-premises" side is billed to AWS instead: the
+> `m8i.2xlarge` Windows host ($0.79/h in us-east-1) plus a NAT gateway and a Transit
+> Gateway attachment for the data center VPC (~$0.10/h). Stop the host between demos.
 
 ---
 
@@ -397,6 +426,10 @@ kubectl get nodeclaims -w  # Wait until empty
 cd terraform-live && terraform destroy
 ```
 
+In `nested-hyperv` mode, deregister the hybrid node's SSM managed instance (`mi-*`)
+before `terraform destroy`; Terraform does not own it. The command is in
+[`docs/nested-hyperv-onprem-setup.md`](docs/nested-hyperv-onprem-setup.md#cleanup).
+
 ---
 
 ## Key Design Decisions
@@ -455,6 +488,7 @@ Results are saved to `tests/results/report_<timestamp>.txt` with pass/fail count
 ## Additional Documentation
 
 - [`docs/hybrid-node-known-issues.md`](docs/hybrid-node-known-issues.md) — 7 documented issues + fixes
+- [`docs/nested-hyperv-onprem-setup.md`](docs/nested-hyperv-onprem-setup.md) — on-premises side on nested Hyper-V (no vSphere needed)
 - [`docs/cost-analysis-burst-scaling.md`](docs/cost-analysis-burst-scaling.md) — Detailed cost breakdown
 - [`docs/test-results-burst-scaling.md`](docs/test-results-burst-scaling.md) — Performance results
 - [`manifests/burst-scaling/README.md`](manifests/burst-scaling/README.md) — Full architecture docs

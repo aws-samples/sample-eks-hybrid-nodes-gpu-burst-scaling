@@ -20,10 +20,12 @@ metadata:
 spec:
   replicas: 1
   strategy:
+    # One hybrid node holds one baseline copy (~8 GiB). Surging a second copy
+    # onto the same node evicts both under memory pressure, so replace instead.
     type: RollingUpdate
     rollingUpdate:
-      maxUnavailable: 0
-      maxSurge: 1
+      maxUnavailable: 1
+      maxSurge: 0
   selector:
     matchLabels:
       model: qwen25-1-5b
@@ -42,8 +44,11 @@ spec:
       containers:
         - name: vllm
           # Official vLLM CPU image (OpenAI-compatible server, CPU build).
+          # PINNED: the requests/limits below were sized on v0.22.1 (the :latest of
+          # 2026-06-07). :latest drifted to v0.31.0, whose engine needs ~8 GiB for
+          # this model and gets OOMKilled at the 5Gi limit. Re-measure before bumping.
           # Mirror to your private ECR for production to avoid Docker Hub rate limits.
-          image: vllm/vllm-openai-cpu:latest
+          image: vllm/vllm-openai-cpu:v0.22.1
           args:
             - '--port=8000'
             - '--model=Qwen/Qwen2.5-1.5B-Instruct'
@@ -53,9 +58,9 @@ spec:
             - '--max-num-seqs=16'
             - '--trust-remote-code'
           env:
-            # vLLM CPU tuning: KV cache space (GiB) in host RAM.
-            # Sized to fit an 8GB node (~5.8Gi allocatable after kubelet/CNI/OS):
-            # model ~3GB (1.5B bf16) + 2GB KV cache + runtime overhead.
+            # vLLM CPU tuning: KV cache space (GiB) in host RAM. 2 GiB of KV cache
+            # (~75k tokens) is part of the ~8 GiB measured below; the node needs
+            # 12 GB RAM so kubelet, Cilium and the OS fit next to it.
             - name: VLLM_CPU_KVCACHE_SPACE
               value: "2"
             # Hugging Face cache on the node (model pulled at first start ~3GB)
@@ -65,15 +70,20 @@ spec:
             - containerPort: 8000
               name: http
           resources:
+            # Measured 2026-10-08 on v0.22.1 (and v0.31.0): ~8.0 GiB anonymous
+            # memory once the engine is up (peak 8.3 GB). The previous 5Gi limit
+            # was OOMKilled right after the weights loaded.
             requests:
               cpu: "2"
-              memory: 4Gi
+              memory: 8Gi
             limits:
               cpu: "3500m"
-              memory: 5Gi
+              memory: 10Gi
           volumeMounts:
             - name: hf-cache
               mountPath: /root/.cache/huggingface
+            - name: dshm
+              mountPath: /dev/shm
           readinessProbe:
             httpGet:
               path: /health
@@ -94,3 +104,10 @@ spec:
           hostPath:
             path: /opt/models/hf-cache
             type: DirectoryOrCreate
+        # vLLM >= 0.31 needs ~160 MiB of shared memory for its engine message
+        # queue and refuses to start on the container default of 64 MiB
+        # ("Insufficient space in /dev/shm"). Counts against the memory limit.
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 512Mi

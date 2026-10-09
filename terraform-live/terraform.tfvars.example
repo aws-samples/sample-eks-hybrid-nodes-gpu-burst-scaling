@@ -1,15 +1,29 @@
-# Required — copy to terraform.tfvars and fill in values (VMware on-premises flavor)
+# Required — copy to terraform.tfvars and fill in values
 cluster_name = "my-eks-vmware-hybrid"
 region       = "us-east-1"
 
-# On-premises (vSphere) networking
-onprem_node_cidr = "192.168.3.0/24" # LAN where your vSphere hybrid node VM lives (RemoteNodeNetwork)
+# Where the on-premises hybrid node runs:
+#   "vsphere"       - a VM in YOUR VMware vSphere, over Site-to-Site VPN (default)
+#   "nested-hyperv" - a Hyper-V VM on an EC2 host with nested virtualization, built
+#                     by this Terraform (no vSphere hardware needed). See
+#                     docs/nested-hyperv-onprem-setup.md
+onprem_mode = "vsphere"
+
+# On-premises networking
+onprem_node_cidr = "192.168.3.0/24" # LAN of the hybrid node (RemoteNodeNetwork). nested-hyperv: the Hyper-V internal switch
 remote_pod_cidr  = "10.201.0.0/16"  # Pod CIDR on the hybrid node (RemotePodNetwork, via Gateway VXLAN)
 
-# Site-to-Site VPN to your on-premises edge router (e.g. pfSense / vCenter network edge)
+# --- vsphere mode only: Site-to-Site VPN to your on-premises edge router (e.g. pfSense) ---
 customer_gateway_ip      = "<YOUR_ONPREM_PUBLIC_IP>" # Public IP of your VPN endpoint. Use DDNS for dynamic IPs.
 customer_gateway_bgp_asn = 65000                     # BGP ASN of your on-premises router (underlay routing is BGP)
 # tgw_amazon_side_asn    = 64512                      # Amazon-side TGW ASN (default)
+
+# --- nested-hyperv mode only (all optional, defaults shown) ---
+# nested_dc_vpc_cidr        = "10.90.0.0/16"  # VPC that plays the data center
+# nested_host_instance_type = "m8i.2xlarge"   # C8i/M8i/R8i only (nested virtualization)
+# nested_vm_vcpus           = 6
+# nested_vm_memory_gb       = 16
+# nested_vm_disk_gb         = 80
 
 # REQUIRED — set via TF_VAR_grafana_admin_password or uncomment below
 # grafana_admin_password = "<YOUR_GRAFANA_PASSWORD>"
