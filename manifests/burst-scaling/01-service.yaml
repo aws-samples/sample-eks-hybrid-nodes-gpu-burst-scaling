@@ -4,6 +4,9 @@ metadata:
   name: qwen-burst-svc
   labels:
     app: vllm-burst-scaling
+    # 05-servicemonitor selects Services by this label. Without it Prometheus
+    # never scrapes vLLM, the KEDA triggers read nothing and the burst never fires.
+    model: qwen25-1-5b
   annotations:
     prometheus.io/scrape: "true"
     prometheus.io/port: "8000"

@@ -80,7 +80,13 @@ data "aws_region" "current" {}
 locals {
   name     = var.cluster_name
   vpc_cidr = "10.43.0.0/16"
-  azs      = data.aws_availability_zones.available.names
+  # Three AZs, not all of them: some regions have an AZ where EKS cannot place
+  # the control plane (us-east-1e), and CreateCluster fails if a subnet lands there.
+  azs = slice(data.aws_availability_zones.available.names, 0, 3)
+
+  # On-premises flavor (see var.onprem_mode)
+  vsphere_mode = var.onprem_mode == "vsphere"
+  nested_mode  = var.onprem_mode == "nested-hyperv"
 
   # EKS pause container image — uses the EKS addon registry for the cluster region.
   # The account 602401143452 is the AWS-managed ECR account for EKS container images

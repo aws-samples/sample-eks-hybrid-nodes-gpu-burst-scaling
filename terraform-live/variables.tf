@@ -27,8 +27,24 @@ variable "region" {
 # vCenter, registered via SSM activation + nodeadm.
 ################################################################################
 
+variable "onprem_mode" {
+  description = <<-EOT
+    Where the on-premises hybrid node runs:
+      - "vsphere"       : a VM in YOUR VMware vSphere, reached over Site-to-Site VPN (default)
+      - "nested-hyperv" : a Hyper-V VM on an EC2 host with nested virtualization, built by
+                          this Terraform. A real hypervisor for demos/PoCs without vSphere hardware.
+  EOT
+  type        = string
+  default     = "vsphere"
+
+  validation {
+    condition     = contains(["vsphere", "nested-hyperv"], var.onprem_mode)
+    error_message = "onprem_mode must be \"vsphere\" or \"nested-hyperv\"."
+  }
+}
+
 variable "onprem_node_cidr" {
-  description = "On-premises LAN CIDR where the vSphere hybrid node(s) live (RemoteNodeNetwork)"
+  description = "On-premises LAN CIDR where the hybrid node(s) live (RemoteNodeNetwork). In nested-hyperv mode this is the Hyper-V internal switch network."
   type        = string
   default     = "192.168.3.0/24"
 }
@@ -40,8 +56,58 @@ variable "remote_pod_cidr" {
 }
 
 variable "customer_gateway_ip" {
-  description = "Public IP of the on-premises VPN endpoint (customer gateway). For dynamic residential IPs, update via DDNS automation."
+  description = "Public IP of the on-premises VPN endpoint (customer gateway). Required when onprem_mode = \"vsphere\". For dynamic residential IPs, update via DDNS automation."
   type        = string
+  default     = null
+}
+
+################################################################################
+# Nested Hyper-V on-premises (onprem_mode = "nested-hyperv")
+#
+# Ported from the EKS Hybrid Nodes workshop: an EC2 8th-gen Intel instance with
+# nested virtualization runs Windows Server + Hyper-V, and an Ubuntu guest VM on
+# it is the hybrid node. Only used in nested-hyperv mode.
+################################################################################
+
+variable "nested_dc_vpc_cidr" {
+  description = "CIDR of the VPC that plays the data center (holds the Hyper-V host). Must not overlap the EKS VPC (10.43.0.0/16), onprem_node_cidr or remote_pod_cidr."
+  type        = string
+  default     = "10.90.0.0/16"
+}
+
+variable "nested_host_instance_type" {
+  description = "Hyper-V host instance type. Nested virtualization requires 8th-gen Intel (C8i, M8i, R8i and their flex variants)."
+  type        = string
+  default     = "m8i.2xlarge"
+
+  validation {
+    condition     = can(regex("^(c8i|m8i|r8i)(-flex)?\\.", var.nested_host_instance_type))
+    error_message = "Nested virtualization is only supported on C8i, M8i and R8i (and -flex) instance types."
+  }
+}
+
+variable "nested_vm_vcpus" {
+  description = "vCPUs of the Ubuntu hybrid node VM inside Hyper-V (leave ~2 vCPUs to the Windows host)"
+  type        = number
+  default     = 6
+}
+
+variable "nested_vm_memory_gb" {
+  description = "Memory (GB, static) of the Ubuntu hybrid node VM inside Hyper-V"
+  type        = number
+  default     = 16
+}
+
+variable "nested_vm_disk_gb" {
+  description = "Disk size (GB) of the Ubuntu hybrid node VM (OS + container images + model cache)"
+  type        = number
+  default     = 80
+}
+
+variable "nested_ubuntu_image_url" {
+  description = "Ubuntu cloud image (qcow2) converted to VHDX for the Hyper-V VM"
+  type        = string
+  default     = "https://cloud-images.ubuntu.com/releases/noble/release/ubuntu-24.04-server-cloudimg-amd64.img"
 }
 
 variable "customer_gateway_bgp_asn" {

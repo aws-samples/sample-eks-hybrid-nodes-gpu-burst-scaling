@@ -3,6 +3,32 @@
 All notable changes to this project will be documented in this file.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-10-09] - On-premises on nested Hyper-V (`onprem_mode = "nested-hyperv"`)
+
+A third way to run the on-premises side, for demos and PoCs without vSphere
+hardware: an Amazon EC2 `m8i` instance with nested virtualization runs Windows
+Server + Hyper-V, and an Ubuntu guest VM is the EKS hybrid node. Ported from the
+EKS Hybrid Nodes workshop. One `terraform apply` builds everything.
+
+### Added
+- `terraform-live/onprem-nested-hyperv.tf`: data center VPC (Transit Gateway attachment + NAT gateway), Hyper-V host (launch template with `NestedVirtualization=enabled`, source/dest check off), private TLS-only artifact bucket, CodeBuild image conversion (Ubuntu qcow2 to VHDX), SSM Automation + association that build the VM and join it
+- `terraform-live/templates/nested-hyperv-setup.yaml.tpl`: SSM Automation (Hyper-V role and reboot, routed LAN switch, VM with a FAT32 `CIDATA` cloud-init seed, health check, waits for the node to register)
+- `terraform-live/templates/nested-node-user-data.yaml.tpl`: cloud-init for the VM (IMDS blocked, static IP, `nodeadm` self-join as a retrying systemd unit)
+- `docs/nested-hyperv-onprem-setup.md`: architecture, deploy, cost, cleanup and troubleshooting
+- Variables `onprem_mode`, `nested_dc_vpc_cidr`, `nested_host_instance_type`, `nested_vm_vcpus`, `nested_vm_memory_gb`, `nested_vm_disk_gb`, `nested_ubuntu_image_url`; outputs `onprem_mode`, `nested_hyperv_host_instance_id`, `nested_hybrid_node_ip`, `nested_setup_status_command`
+
+### Changed
+- `terraform-live/tgw.tf`: customer gateway and Site-to-Site VPN are created only in `vsphere` mode (default, behavior unchanged); `customer_gateway_ip` is now optional and enforced by a precondition in that mode
+- `terraform-live/main.tf`: the EKS VPC uses the first three AZs. With every AZ, `us-east-1e` got a subnet and `CreateCluster` failed with `UnsupportedAvailabilityZoneException`
+- `README.md`, `terraform.tfvars.example`: document both modes
+
+### Fixed (found by the end-to-end test, affect both modes)
+- `manifests/burst-scaling/01-service.yaml`: the Service lacked the `model: qwen25-1-5b` label that `05-servicemonitor.yaml` selects, so Prometheus never scraped vLLM, the KEDA triggers read nothing and the burst never fired. With the label: queue depth 184 waiting / 16 running, KEDA Active, 4 GPU nodes and 4 burst pods Ready behind the same Service
+- `manifests/burst-scaling/02-hybrid-deployment.yaml.tpl`: pinned `vllm/vllm-openai-cpu` to `v0.22.1` (the `:latest` of 2026-06-07, when the baseline was sized); `:latest` is now v0.31.0. Measured ~8.0 GiB of anonymous memory once the engine is up on both versions, so the 5Gi limit was OOMKilled right after the weights loaded: request 8Gi / limit 10Gi now, rollout replaces instead of surging a second copy onto the node, and a 512Mi memory-backed `/dev/shm` (v0.31 refuses to start on the 64 MiB default)
+- `README.md`, `docs/vsphere-onprem-setup.md`: vSphere VM RAM 8 GB -> 12 GB to match the measured baseline
+
+---
+
 ## [2026-05-18] - Minor Fixes
 
 ### Added
