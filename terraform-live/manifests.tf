@@ -16,6 +16,7 @@ locals {
   manifest_template_vars = {
     dlc_account_id = var.dlc_account_id
     region         = var.region
+    vpc_cidr       = local.vpc_cidr
   }
 
   manifests_dir = "${path.module}/../manifests/burst-scaling"
@@ -36,6 +37,19 @@ resource "local_file" "burst_deployment" {
   file_permission = "0644"
 }
 
+resource "local_file" "network_policy" {
+  content  = templatefile("${local.manifests_dir}/07-networkpolicy.yaml.tpl", local.manifest_template_vars)
+  filename = "${local.rendered_dir}/07-networkpolicy.yaml"
+
+  file_permission = "0644"
+}
+
+# 07 used to be copied verbatim; keep existing state on upgrade
+moved {
+  from = local_file.static_manifests["07-networkpolicy.yaml"]
+  to   = local_file.network_policy
+}
+
 # Copy static manifests (no placeholders) to rendered/ for convenience
 # so users can 'kubectl apply -f rendered/' for everything
 resource "local_file" "static_manifests" {
@@ -44,7 +58,6 @@ resource "local_file" "static_manifests" {
     "04-keda-scaledobject.yaml",
     "05-servicemonitor.yaml",
     "06-prometheusrule.yaml",
-    "07-networkpolicy.yaml",
     "08-pdb.yaml",
     "09-grafana-dashboard.yaml",
     "11-dcgm-servicemonitor.yaml",

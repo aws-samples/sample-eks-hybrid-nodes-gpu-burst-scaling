@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-10-20] - Burst demo serves traffic; NetworkPolicy and KEDA docs in sync (#3)
+
+An end-to-end dry run in `nested-hyperv` mode scaled the burst tier to 4 GPU
+pods that served zero requests: the demo queued all 500 requests on the CPU pod
+within a minute, before any burst endpoint existed.
+
+### Changed
+- `scripts/demo-burst-scaling.sh`: constant arrival rate instead of a one-shot flood (`CLIENTS` loops for `DURATION` seconds, `MAX_TOKENS` 256; replaces `CONCURRENT`/`ROUNDS`/`BATCH`), URL-encoded Prometheus queries, and a final check that burst pods are running requests before reporting success
+- `README.md`: what to expect from load shape, GPU capacity fallback (Spot G/VT quota, On-Demand) and scale-down timing
+
+### Fixed
+- `manifests/burst-scaling/07-networkpolicy.yaml` is now a template (`.yaml.tpl`) rendered with the EKS VPC CIDR; it hardcoded `10.0.0.0/16` for VPC ingress and VXLAN egress (masked by `14-cilium-networkpolicy.yaml`). A `moved` block keeps existing state
+- `README.md`, `manifests/burst-scaling/README.md`: KEDA trigger thresholds and pod filter match the deployed `ScaledObject` (`qwen-hybrid.*`; 1/2, 1 s/2 s, 12 s/20 s)
+
 ## [2026-10-09] - On-premises on nested Hyper-V (`onprem_mode = "nested-hyperv"`)
 
 A third way to run the on-premises side, for demos and PoCs without vSphere
