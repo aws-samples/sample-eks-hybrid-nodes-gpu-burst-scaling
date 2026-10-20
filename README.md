@@ -266,13 +266,13 @@ All burst-scaling manifests are in `manifests/burst-scaling/`:
 
 ## KEDA Scaling Triggers
 
-The `ScaledObject` defines 3 Prometheus triggers filtered to `pod=~"qwen36-hybrid.*"` (hybrid only — prevents feedback loop):
+The `ScaledObject` defines 3 Prometheus triggers filtered to `pod=~"qwen-hybrid.*"` (hybrid only — prevents feedback loop). Thresholds are sized for the **CPU** baseline, where TTFT and E2E latency are naturally higher than on GPU:
 
 | Trigger | PromQL Query | Activation | Threshold | Rationale |
 |---------|-------------|------------|-----------|-----------|
-| **Queue Depth** | `sum(waiting) / clamp_min(sum(running), 1)` | 1.5 | 2.0 | Most robust at low load |
-| **TTFT P95** | `histogram_quantile(0.95, rate(time_to_first_token_seconds_bucket[2m]))` | 0.3s | 0.5s | Leading indicator of KV-cache pressure |
-| **E2E Latency P95** | `histogram_quantile(0.95, rate(e2e_request_latency_seconds_bucket[2m]))` | 7s | 10s | Backstop for long generations |
+| **Queue Depth** | `sum(waiting) / clamp_min(sum(running), 1)` | 1 | 2 | Most robust at low load |
+| **TTFT P95** | `histogram_quantile(0.95, rate(time_to_first_token_seconds_bucket[2m]))` | 1s | 2s | Leading indicator of saturation |
+| **E2E Latency P95** | `histogram_quantile(0.95, rate(e2e_request_latency_seconds_bucket[2m]))` | 12s | 20s | Backstop for long generations |
 
 **Behavior:** OR logic — any single trigger crossing `activationThreshold` activates scaling.
 
@@ -281,6 +281,11 @@ The `ScaledObject` defines 3 Prometheus triggers filtered to `pod=~"qwen36-hybri
 - `cooldownPeriod: 300s` — wait 5 min before scale-down
 - `minReplicaCount: 0` — scale to zero
 - `maxReplicaCount: 4` — max burst capacity
+
+**What to expect when running the demo:**
+- **Load shape matters.** Requests already queued on the CPU pod never move to burst pods that become Ready later (~6–10 min including GPU node launch and model load). `scripts/demo-burst-scaling.sh` therefore drives a constant arrival rate (`CLIENTS` loops for `DURATION` seconds) and checks at the end that `vllm:num_requests_running{pod=~"qwen-burst.*"}` is above zero.
+- **GPU capacity is not guaranteed.** If the preferred instance types return `InsufficientInstanceCapacity`, Karpenter falls back to other sizes/families in the `gpu` NodePool, including On-Demand. Check the "All G and VT Spot Instance Requests" quota in your account and keep the NodePool diversified across g6/g6e/g7e and AZs.
+- **Scale-down takes longer than scale-up.** After load stops: KEDA cooldown (300 s) → burst replicas 0 → the `gpu` NodePool waits `consolidateAfter: 600s` and removes empty nodes within a 10% disruption budget (one node at a time). Expect ~25–30 min until zero GPU nodes with 4 burst nodes.
 
 ---
 
@@ -295,11 +300,14 @@ kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:3000
 **Key Prometheus queries:**
 ```promql
 # Queue depth ratio (KEDA trigger)
-sum(vllm:num_requests_waiting{pod=~"qwen36-hybrid.*"}) / 
-clamp_min(sum(vllm:num_requests_running{pod=~"qwen36-hybrid.*"}), 1)
+sum(vllm:num_requests_waiting{pod=~"qwen-hybrid.*"}) / 
+clamp_min(sum(vllm:num_requests_running{pod=~"qwen-hybrid.*"}), 1)
 
 # TTFT P95
-histogram_quantile(0.95, sum(rate(vllm:time_to_first_token_seconds_bucket{pod=~"qwen36-hybrid.*"}[5m])) by (le))
+histogram_quantile(0.95, sum(rate(vllm:time_to_first_token_seconds_bucket{pod=~"qwen-hybrid.*"}[5m])) by (le))
+
+# Is the burst tier actually serving? (should be > 0 while burst pods are Ready)
+sum(vllm:num_requests_running{pod=~"qwen-burst.*"})
 
 # GPU utilization
 DCGM_FI_DEV_GPU_UTIL

@@ -29,7 +29,7 @@ spec:
           protocol: TCP
     - from:
         - ipBlock:
-            cidr: 10.0.0.0/16
+            cidr: ${vpc_cidr}
       ports:
         - port: 8000
           protocol: TCP
@@ -44,7 +44,7 @@ spec:
           protocol: TCP
     - to:
         - ipBlock:
-            cidr: 10.0.0.0/16
+            cidr: ${vpc_cidr}
       ports:
         - port: 8472
           protocol: UDP

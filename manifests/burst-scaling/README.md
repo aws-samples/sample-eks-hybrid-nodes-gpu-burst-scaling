@@ -63,7 +63,7 @@ kubectl apply -f manifests/burst-scaling/03-burst-deployment.yaml
 kubectl apply -f manifests/burst-scaling/04-keda-scaledobject.yaml
 kubectl apply -f manifests/burst-scaling/05-servicemonitor.yaml
 kubectl apply -f manifests/burst-scaling/06-prometheusrule.yaml
-kubectl apply -f manifests/burst-scaling/07-networkpolicy.yaml
+kubectl apply -f manifests/burst-scaling/rendered/07-networkpolicy.yaml   # rendered by Terraform (VPC CIDR)
 kubectl apply -f manifests/burst-scaling/08-pdb.yaml
 kubectl apply -f manifests/burst-scaling/09-grafana-dashboard.yaml
 ```
@@ -92,9 +92,9 @@ saturation**, not aggregate load (which would create a feedback loop).
 
 | Trigger | Query | Activation | Threshold | Rationale |
 |---|---|---:|---:|---|
-| TTFT P95 | `histogram_quantile(0.95, ... vllm:time_to_first_token_seconds_bucket ...)` | 0.3 s | 0.5 s | Best leading indicator of overload — KV-cache pressure shows up here first. |
-| Queue depth ratio | `sum(num_requests_waiting) / clamp_min(sum(num_requests_running), 1)` | 1.5 | 2.0 | Detects scheduler queueing once running batch is saturated. |
-| E2E P95 latency | `histogram_quantile(0.95, ... vllm:e2e_request_latency_seconds_bucket ...)` | 7 s | 10 s | Backstop for long generations not captured by TTFT. |
+| TTFT P95 | `histogram_quantile(0.95, ... vllm:time_to_first_token_seconds_bucket ...)` | 1 s | 2 s | Best leading indicator of overload; sized for the CPU baseline. |
+| Queue depth ratio | `sum(num_requests_waiting) / clamp_min(sum(num_requests_running), 1)` | 1 | 2 | Detects scheduler queueing once running batch is saturated. |
+| E2E P95 latency | `histogram_quantile(0.95, ... vllm:e2e_request_latency_seconds_bucket ...)` | 12 s | 20 s | Backstop for long generations not captured by TTFT. |
 
 `pollingInterval: 15s`, `cooldownPeriod: 300s`, `maxReplicaCount: 4`.
 
